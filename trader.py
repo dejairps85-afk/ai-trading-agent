@@ -1,7 +1,7 @@
 """
 Agente Trader (decisão final)
 """
-from utils.llm import llm
+from llm import llm
 from typing import Dict, Any
 
 
