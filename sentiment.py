@@ -2,7 +2,7 @@
 Agente de Sentimento + Notícias (simplificado)
 Usa título de notícias do Yahoo + LLM para interpretar.
 """
-from utils.llm import llm
+from llm import llm
 from data.fetcher import get_info
 from typing import Dict, Any
 import yfinance as yf
