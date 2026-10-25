@@ -32,8 +32,8 @@ from technical import TechnicalAnalyst
 from sentiment import SentimentAnalyst
 from risk import RiskManager
 from trader import Trader
-from portfolio.paper_trader import PaperPortfolio
-from data.fetcher import get_market_snapshot, normalize_ticker
+from paper_trader import PaperPortfolio
+from fetcher import get_market_snapshot, normalize_ticker
 
 logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
