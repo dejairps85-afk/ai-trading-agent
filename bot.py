@@ -28,10 +28,10 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from config import TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID, DEFAULT_TICKER, PAPER_TRADING
-from agents.technical import TechnicalAnalyst
-from agents.sentiment import SentimentAnalyst
-from agents.risk import RiskManager
-from agents.trader import TraderAgent
+from technical import TechnicalAnalyst
+from sentiment import SentimentAnalyst
+from risk import RiskManager
+from trader import Trader
 from portfolio.paper_trader import PaperPortfolio
 from data.fetcher import get_market_snapshot, normalize_ticker
 
