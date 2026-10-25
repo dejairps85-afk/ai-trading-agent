@@ -1,7 +1,7 @@
 """
 Agente de Gestão de Risco
 """
-from utils.llm import llm
+from llm import llm
 from typing import Dict, Any
 from config import RISK_PER_TRADE, MAX_POSITIONS, INITIAL_CAPITAL
 
