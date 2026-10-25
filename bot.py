@@ -31,7 +31,7 @@ from config import TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID, DEFAULT_TICKER, PAPER_T
 from technical import TechnicalAnalyst
 from sentiment import SentimentAnalyst
 from risk import RiskManager
-from trader import Trader
+from trader import TraderAgent
 from paper_trader import PaperPortfolio
 from fetcher import get_market_snapshot, normalize_ticker
 
