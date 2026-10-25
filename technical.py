@@ -1,8 +1,8 @@
 """
 Agente Analista Técnico
 """
-from utils.llm import llm
-from data.fetcher import get_market_snapshot
+from llm import llm
+from fetcher import get_market_snapshot
 from typing import Dict, Any
 
 
