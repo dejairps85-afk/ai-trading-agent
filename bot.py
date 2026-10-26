@@ -189,9 +189,9 @@ async def analyze_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if ticker in portfolio.positions:
             keyboard.append(
                 [InlineKeyboardButton(f"📉 Fechar {ticker}", callback_data=f"close_{ticker}")]
-            )
+        )
 
-                await msg.edit_text(
+        await msg.edit_text(
             text,
             reply_markup=InlineKeyboardMarkup(keyboard),
         )
@@ -199,7 +199,7 @@ async def analyze_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         logger.exception("Erro na análise")
         await msg.edit_text(
-                        f"❌ Erro ao analisar {ticker}:\n{str(e)[:250]}",
+            f"❌ Erro ao analisar {ticker}:\n{str(e)[:250]}"
         )
 
 
