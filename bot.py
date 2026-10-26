@@ -1,87 +1,52 @@
 #!/usr/bin/env python3
 """
-AI Trading Agent - Versão Telegram (ideal para celular / iPhone / Android)
-
-Comandos:
-  /start
-  /analyze BTC-USD | PETR4.SA | WIN | WDO
-  /status
-  /trade TICKER
-  /close TICKER
-  /close all
-  /help
-"""
 import os
-import asyncio
-import logging
 import threading
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
-from dotenv import load_dotenv
-
-load_dotenv()
-
-# ---------------------------------------------------------------------------
-# Servidor HTTP mínimo para o Render detectar a porta (Web Service)
-# ---------------------------------------------------------------------------
-
-
+# 1. ABRE A PORTA IMEDIATAMENTE - ANTES DE TUDO
 class HealthHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         self.send_response(200)
         self.end_headers()
         self.wfile.write(b"ok")
-
     def do_HEAD(self):
         self.send_response(200)
         self.end_headers()
-
     def log_message(self, *args):
-        pass  # silencia os logs de health check
-
-
-_health_started = False
-
+        pass
 
 def start_health_server():
-    """Abre a porta UMA única vez. Deve ser chamado só em main()."""
-    global _health_started
-    if _health_started:
-        return
-    _health_started = True
-
     port = int(os.environ.get("PORT", 10000))
     try:
         server = HTTPServer(("0.0.0.0", port), HealthHandler)
-    except OSError as e:
-        print(f"⚠️ Health server não iniciou na porta {port}: {e}")
-        return
+        threading.Thread(target=server.serve_forever, daemon=True).start()
+        print(f"Health check rodando na porta {port}")
+    except Exception as e:
+        print(f"Health server erro: {e}")
 
-    threading.Thread(target=server.serve_forever, daemon=True).start()
-    print(f"Health check rodando na porta {port}")
+start_health_server()  # <- CHAMA AGORA
 
+# 2. SÓ AGORA importa o resto
+import asyncio
+import logging
+from dotenv import load_dotenv
+load_dotenv()
 
-# ---------------------------------------------------------------------------
-# Imports do bot
-# ---------------------------------------------------------------------------
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.ext import Application, CommandHandler, CallbackQueryHandler, filters, MessageHandler, ContextTypes
 from telegram.error import BadRequest
-from telegram.ext import (
-    Application,
-    CommandHandler,
-    ContextTypes,
-    MessageHandler,
-    CallbackQueryHandler,
-    filters,
-)
 
+# Seus módulos
 from config import TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID, DEFAULT_TICKER, PAPER_TRADING
 from technical import TechnicalAnalyst
 from sentiment import SentimentAnalyst
 from risk import RiskManager
 from trader import TraderAgent
 from paper_trader import PaperPortfolio
-from fetcher import get_market_snapshot, normalize_ticker
+from fetcher import get_market_snapshot
+
+# ... resto do seu código continua igual a partir daqui ...
 
 logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
