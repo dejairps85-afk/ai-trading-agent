@@ -1,63 +1,48 @@
-"""
-Agente Trader (decisão final)
-"""
-from llm import llm
-from typing import Dict, Any
-
-
-SYSTEM_PROMPT = """Você é o Trader principal de um desk de trading.
-Você recebe análises de outros agentes e toma a decisão final.
-Responda SEMPRE em JSON válido:
-{
-  "action": "BUY" | "SELL" | "HOLD",
-  "confidence": 0.0 a 1.0,
-  "reasoning": "explicação clara em português (3-5 frases)",
-  "entry_zone": "faixa de preço ideal ou null",
-  "time_horizon": "curto" | "médio" | "longo"
-}
-Seja disciplinado. Na dúvida, escolha HOLD.
-"""
-
+import json
+from llm_client import call_llama
 
 class TraderAgent:
-    def decide(
-        self,
-        ticker: str,
-        technical: Dict[str, Any],
-        sentiment: Dict[str, Any],
-        risk: Dict[str, Any],
-    ) -> Dict[str, Any]:
-        user_prompt = f"""
-Decisão final para {ticker}:
+    def decide(self, ticker, technical, sentiment, risk):
+        # Se risco já reprovou, nem chama LLM (economiza)
+        if not risk.get("approved"):
+            return {
+                "action": "HOLD",
+                "confidence": 0.8,
+                "time_horizon": "N/A",
+                "reasoning": f"Risco reprovou: {risk.get('reason','')}"
+            }
 
-=== Técnico ===
-Bias: {technical.get('bias')} | Confiança: {technical.get('confidence')}
-Resumo: {technical.get('summary')}
-Sinais: {technical.get('signals')}
+        prompt = f"""
+Você é o trader final. Decida para {ticker}.
 
-=== Sentimento ===
-Sentiment: {sentiment.get('sentiment')} | Confiança: {sentiment.get('confidence')}
-Temas: {sentiment.get('main_themes')}
-Resumo: {sentiment.get('summary')}
+Dados:
+Técnico: {technical.get('bias')} ({technical.get('confidence')}) - {technical.get('summary','')[:200]}
+Sentimento: {sentiment.get('sentiment')} ({sentiment.get('confidence')}) - {sentiment.get('summary','')[:200]}
+Risco aprovado: {risk.get('approved')} - tamanho {risk.get('position_size_pct')}
 
-=== Risco ===
-Aprovado: {risk.get('approved')}
-Tamanho sugerido: {risk.get('position_size_pct', 0)*100:.1f}%
-Stop: {risk.get('stop_loss_pct', 0)*100:.1f}% | Take: {risk.get('take_profit_pct', 0)*100:.1f}%
-Motivo risco: {risk.get('max_risk_reason')}
-
-Com base nisso, qual a ação final?
+Retorne APENAS JSON válido, sem markdown:
+{{
+  "action": "BUY" ou "SELL" ou "HOLD",
+  "confidence": 0.0 a 1.0,
+  "time_horizon": "scalp" ou "swing" ou "position",
+  "reasoning": "explicação curta em português, sem usar * ou _ ou #"
+}}
+Seja conservador. Só diga BUY se técnico e sentimento alinharem.
 """
+        try:
+            raw = call_llama(prompt, system="Você é um trader disciplinado. Responda apenas JSON.", temperature=0.2)
+            raw = raw.replace("```json", "").replace("```", "").strip()
+            data = json.loads(raw)
 
-        result = llm.structured_decision(SYSTEM_PROMPT, user_prompt)
-        result["agent"] = "TraderAgent"
+            action = data.get("action", "HOLD").upper()
+            if action not in ["BUY", "SELL", "HOLD"]:
+                action = "HOLD"
 
-        # Se risco rejeitou, força HOLD
-        if not risk.get("approved", False) and result.get("action") != "HOLD":
-            result["action"] = "HOLD"
-            result["reasoning"] = (
-                f"[Bloqueado pelo Risk Manager] {result.get('reasoning', '')}"
-            )
-            result["confidence"] = min(result.get("confidence", 0.5), 0.4)
-
-        return result
+            return {
+                "action": action,
+                "confidence": float(data.get("confidence", 0.5)),
+                "time_horizon": data.get("time_horizon", "swing"),
+                "reasoning": data.get("reasoning", "")[:500]
+            }
+        except Exception as e:
+            return {"action": "HOLD", "confidence": 0.4, "time_horizon": "N/A", "reasoning": f"Erro LLM, mantendo HOLD. {e}"}
