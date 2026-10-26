@@ -1,4 +1,5 @@
-XAI_API_KEY=sua_chave_xai_aqui_AQ.Ab8RN6KxTez_4YQ4_gyFeHX4Fsr62-R-uav_UUmfTkBVfOVzOg
+XAI_API_KEY=sua_chave_xai_aqui_
+AQ.Ab8RN6KxTez_4YQ4_gyFeHX4Fsr62-R-uav_UUmfTkBVfOVzOg
 LLM_PROVIDER=xai
 LLM_MODEL=grok-4
 
