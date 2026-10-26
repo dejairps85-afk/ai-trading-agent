@@ -50,8 +50,11 @@ def is_authorized(update: Update) -> bool:
     chat_id = str(update.effective_chat.id)
     return chat_id == AUTHORIZED_CHAT_ID or chat_id == str(AUTHORIZED_CHAT_ID)
 
-
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    logger.info("=== COMANDO /start RECEBIDO ===")
+    logger.info(f"Chat ID: {update.effective_chat.id}")
+    logger.info(f"User: {update.effective_user.first_name}")
+
     if not is_authorized(update):
         await update.message.reply_text("⛔ Acesso não autorizado.")
         return
