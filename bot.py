@@ -435,8 +435,12 @@ def main():
     threading.Thread(target=server.serve_forever, daemon=True).start()
     print(f"Health check rodando na porta {port}")
 
-    # Roda o bot
-    app.run_polling(allowed_updates=Update.ALL_TYPES)
+    # Limpa webhook antigo e inicia o polling
+    print("Limpando webhook e iniciando polling...")
+    app.run_polling(
+        drop_pending_updates=True,
+        allowed_updates=Update.ALL_TYPES
+    )
 
 
 if __name__ == "__main__":
