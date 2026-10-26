@@ -191,17 +191,15 @@ async def analyze_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 [InlineKeyboardButton(f"📉 Fechar {ticker}", callback_data=f"close_{ticker}")]
             )
 
-        await msg.edit_text(
+                await msg.edit_text(
             text,
-            parse_mode="Markdown",
             reply_markup=InlineKeyboardMarkup(keyboard),
         )
 
     except Exception as e:
         logger.exception("Erro na análise")
         await msg.edit_text(
-            f"❌ Erro ao analisar {ticker}:\n`{str(e)[:250]}`",
-            parse_mode="Markdown",
+                        f"❌ Erro ao analisar {ticker}:\n{str(e)[:250]}",
         )
 
 
