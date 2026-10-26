@@ -11,10 +11,22 @@ Comandos:
   /close all
   /help
 """
-import os, threading
+import os
+import asyncio
+import logging
+import threading
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
-class Handler(BaseHTTPRequestHandler):
+from dotenv import load_dotenv
+
+load_dotenv()
+
+# ---------------------------------------------------------------------------
+# Servidor HTTP mínimo para o Render detectar a porta (Web Service)
+# ---------------------------------------------------------------------------
+
+
+class HealthHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         self.send_response(200)
         self.end_headers()
@@ -27,25 +39,33 @@ class Handler(BaseHTTPRequestHandler):
     def log_message(self, *args):
         pass  # silencia os logs de health check
 
-_started = False
 
-def keep_alive():
-    global _started
-    if _started:
+_health_started = False
+
+
+def start_health_server():
+    """Abre a porta UMA única vez. Deve ser chamado só em main()."""
+    global _health_started
+    if _health_started:
         return
-    _started = True
+    _health_started = True
+
     port = int(os.environ.get("PORT", 10000))
     try:
-        HTTPServer(("0.0.0.0", port), Handler).serve_forever()
+        server = HTTPServer(("0.0.0.0", port), HealthHandler)
     except OSError as e:
-        print(f"Servidor HTTP não iniciou: {e}")
+        print(f"⚠️ Health server não iniciou na porta {port}: {e}")
+        return
 
-threading.Thread(target=keep_alive, daemon=True).start()
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    print(f"Health check rodando na porta {port}")
 
 
-import os
-import logging
+# ---------------------------------------------------------------------------
+# Imports do bot
+# ---------------------------------------------------------------------------
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.error import BadRequest
 from telegram.ext import (
     Application,
     CommandHandler,
@@ -54,9 +74,6 @@ from telegram.ext import (
     CallbackQueryHandler,
     filters,
 )
-from dotenv import load_dotenv
-
-load_dotenv()
 
 from config import TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID, DEFAULT_TICKER, PAPER_TRADING
 from technical import TechnicalAnalyst
@@ -78,8 +95,19 @@ AUTHORIZED_CHAT_ID = TELEGRAM_CHAT_ID.strip() if TELEGRAM_CHAT_ID else None
 def is_authorized(update: Update) -> bool:
     if not AUTHORIZED_CHAT_ID:
         return True
-    chat_id = str(update.effective_chat.id)
-    return chat_id == AUTHORIZED_CHAT_ID or chat_id == str(AUTHORIZED_CHAT_ID)
+    if not update.effective_chat:
+        return False
+    return str(update.effective_chat.id) == str(AUTHORIZED_CHAT_ID)
+
+
+async def safe_edit(msg, text, **kwargs):
+    """Edita a mensagem com Markdown; se o Telegram recusar o formato, reenvia sem Markdown."""
+    try:
+        await msg.edit_text(text, parse_mode="Markdown", **kwargs)
+    except BadRequest as e:
+        logger.warning(f"Markdown inválido, reenviando em texto puro: {e}")
+        await msg.edit_text(text.replace("*", "").replace("`", ""), **kwargs)
+
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     logger.info("=== COMANDO /start RECEBIDO ===")
@@ -119,11 +147,10 @@ async def status_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     portfolio = PaperPortfolio()
-    # Tenta atualizar preços das posições abertas
     prices = {}
     for t in portfolio.positions.keys():
         try:
-            snap = get_market_snapshot(t)
+            snap = await asyncio.to_thread(get_market_snapshot, t)
             prices[t] = snap["price"]
         except Exception:
             pass
@@ -152,6 +179,27 @@ async def status_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(text, parse_mode="Markdown")
 
 
+def run_full_analysis(ticker: str):
+    """Roda toda a análise (bloqueante). Chamada via asyncio.to_thread."""
+    tech = TechnicalAnalyst().analyze(ticker)
+    sent = SentimentAnalyst().analyze(ticker)
+
+    portfolio = PaperPortfolio()
+    prices = {ticker: tech["snapshot"]["price"]}
+    status = portfolio.status(prices)
+
+    risk = RiskManager().evaluate(
+        ticker=ticker,
+        technical=tech,
+        sentiment=sent,
+        proposed_action="BUY",
+        current_equity=status["equity"],
+        open_positions=status["open_count"],
+    )
+    decision = TraderAgent().decide(ticker, tech, sent, risk)
+    return tech, sent, risk, decision, portfolio
+
+
 async def analyze_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not is_authorized(update):
         await update.message.reply_text("⛔ Acesso não autorizado.")
@@ -167,22 +215,9 @@ async def analyze_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
     try:
-        tech = TechnicalAnalyst().analyze(ticker)
-        sent = SentimentAnalyst().analyze(ticker)
-
-        portfolio = PaperPortfolio()
-        prices = {ticker: tech["snapshot"]["price"]}
-        status = portfolio.status(prices)
-
-        risk = RiskManager().evaluate(
-            ticker=ticker,
-            technical=tech,
-            sentiment=sent,
-            proposed_action="BUY",
-            current_equity=status["equity"],
-            open_positions=status["open_count"],
+        tech, sent, risk, decision, portfolio = await asyncio.to_thread(
+            run_full_analysis, ticker
         )
-        decision = TraderAgent().decide(ticker, tech, sent, risk)
 
         snap = tech.get("snapshot", {})
         action = decision.get("action", "HOLD")
@@ -220,18 +255,14 @@ async def analyze_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if ticker in portfolio.positions:
             keyboard.append(
                 [InlineKeyboardButton(f"📉 Fechar {ticker}", callback_data=f"close_{ticker}")]
-        )
+            )
 
-        await msg.edit_text(
-            text,
-            reply_markup=InlineKeyboardMarkup(keyboard),
-        )
+        # Texto vem de LLM e pode quebrar o Markdown: safe_edit tenta e cai para texto puro
+        await safe_edit(msg, text, reply_markup=InlineKeyboardMarkup(keyboard))
 
     except Exception as e:
         logger.exception("Erro na análise")
-        await msg.edit_text(
-            f"❌ Erro ao analisar {ticker}:\n{str(e)[:250]}"
-        )
+        await msg.edit_text(f"❌ Erro ao analisar {ticker}:\n{str(e)[:250]}")
 
 
 async def trade_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -249,29 +280,17 @@ async def trade_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
     try:
-        tech = TechnicalAnalyst().analyze(ticker)
-        sent = SentimentAnalyst().analyze(ticker)
-        portfolio = PaperPortfolio()
-        prices = {ticker: tech["snapshot"]["price"]}
-        status = portfolio.status(prices)
-
-        risk = RiskManager().evaluate(
-            ticker=ticker,
-            technical=tech,
-            sentiment=sent,
-            proposed_action="BUY",
-            current_equity=status["equity"],
-            open_positions=status["open_count"],
+        tech, sent, risk, decision, portfolio = await asyncio.to_thread(
+            run_full_analysis, ticker
         )
-        decision = TraderAgent().decide(ticker, tech, sent, risk)
 
         if decision.get("action") != "BUY" or not risk.get("approved"):
-            await msg.edit_text(
+            await safe_edit(
+                msg,
                 f"🟡 Nenhuma ordem paper executada.\n"
                 f"Decisão: *{decision.get('action')}*\n"
                 f"Risco aprovado: `{risk.get('approved')}`\n\n"
                 f"{decision.get('reasoning', '')[:300]}",
-                parse_mode="Markdown",
             )
             return
 
@@ -287,21 +306,21 @@ async def trade_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         if result.get("success"):
             trade = result["trade"]
-            await msg.edit_text(
+            await safe_edit(
+                msg,
                 f"✅ *Paper Trade executado!*\n\n"
                 f"Ticker: `{ticker}`\n"
                 f"Qty: `{trade['qty']:.6f}`\n"
                 f"Preço: `{trade['price']:.4f}`\n"
                 f"Custo: `${trade['cost']:,.2f}`\n\n"
                 f"Use /status ou /close `{ticker}`",
-                parse_mode="Markdown",
             )
         else:
             await msg.edit_text(f"❌ Erro no paper trade: {result.get('error')}")
 
     except Exception as e:
         logger.exception("Erro no trade")
-        await msg.edit_text(f"❌ Erro: `{str(e)[:200]}`", parse_mode="Markdown")
+        await msg.edit_text(f"❌ Erro: {str(e)[:200]}")
 
 
 async def close_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -331,20 +350,27 @@ async def close_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         for ticker in list(portfolio.positions.keys()):
             try:
-                snap = get_market_snapshot(ticker)
+                snap = await asyncio.to_thread(get_market_snapshot, ticker)
                 price = snap["price"]
-                result = portfolio.close_position(ticker, price, reason="Fechamento manual via /close all")
+                result = portfolio.close_position(
+                    ticker, price, reason="Fechamento manual via /close all"
+                )
                 if result.get("success"):
-                    closed.append(f"`{ticker}` PnL: ${result['pnl']:+.2f} ({result['pnl_pct']:+.1f}%)")
+                    closed.append(
+                        f"`{ticker}` PnL: ${result['pnl']:+.2f} ({result['pnl_pct']:+.1f}%)"
+                    )
                 else:
                     errors.append(f"{ticker}: {result.get('error')}")
             except Exception as e:
                 errors.append(f"{ticker}: {str(e)[:80]}")
 
-        text = "✅ *Posições fechadas:*\n" + "\n".join(closed) if closed else "Nada fechado."
+        if closed:
+            text = "✅ *Posições fechadas:*\n" + "\n".join(closed)
+        else:
+            text = "Nada fechado."
         if errors:
             text += "\n\n⚠️ Erros:\n" + "\n".join(errors)
-        await msg.edit_text(text, parse_mode="Markdown")
+        await safe_edit(msg, text)
         return
 
     # Fecha um ticker específico
@@ -356,27 +382,29 @@ async def close_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
-    msg = await update.message.reply_text(f"⏳ Fechando posição de *{ticker}*...", parse_mode="Markdown")
+    msg = await update.message.reply_text(
+        f"⏳ Fechando posição de *{ticker}*...", parse_mode="Markdown"
+    )
 
     try:
-        snap = get_market_snapshot(ticker)
+        snap = await asyncio.to_thread(get_market_snapshot, ticker)
         price = snap["price"]
         result = portfolio.close_position(ticker, price, reason="Fechamento manual via /close")
 
         if result.get("success"):
-            await msg.edit_text(
+            await safe_edit(
+                msg,
                 f"✅ *Posição fechada!*\n\n"
                 f"Ticker: `{ticker}`\n"
                 f"Preço de saída: `{price:.4f}`\n"
                 f"PnL: `${result['pnl']:+.2f}` (`{result['pnl_pct']:+.1f}%`)\n\n"
                 f"Use /status para ver o portfólio.",
-                parse_mode="Markdown",
             )
         else:
             await msg.edit_text(f"❌ Erro: {result.get('error')}")
     except Exception as e:
         logger.exception("Erro ao fechar")
-        await msg.edit_text(f"❌ Erro ao fechar {ticker}: `{str(e)[:200]}`", parse_mode="Markdown")
+        await msg.edit_text(f"❌ Erro ao fechar {ticker}: {str(e)[:200]}")
 
 
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -403,7 +431,6 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     elif data.startswith("analyze_"):
         ticker = data.replace("analyze_", "")
-        # Avisa para usar o comando (evita reimplementar tudo no callback)
         await query.edit_message_text(
             f"Para reanalisar, envie:\n`/analyze {ticker}`",
             parse_mode="Markdown",
@@ -430,14 +457,21 @@ async def unknown(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("Comando não reconhecido. Use /help")
 
 
+async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE):
+    """Evita que erros (ex.: Conflict de deploy duplicado) derrubem o bot com stack trace solto."""
+    logger.error("Erro não tratado:", exc_info=context.error)
+
+
 def main():
     token = TELEGRAM_BOT_TOKEN or os.getenv("TELEGRAM_BOT_TOKEN")
     if not token:
         print("❌ TELEGRAM_BOT_TOKEN não configurado")
         return
 
+    # Abre a porta ANTES de qualquer coisa pesada, uma única vez
+    start_health_server()
+
     print("🤖 Iniciando AI Trading Agent (Telegram)...")
-    print("Funciona no iPhone e Android.")
 
     app = Application.builder().token(token).build()
 
@@ -449,29 +483,12 @@ def main():
     app.add_handler(CommandHandler("close", close_cmd))
     app.add_handler(CallbackQueryHandler(button_handler))
     app.add_handler(MessageHandler(filters.COMMAND, unknown))
+    app.add_error_handler(error_handler)
 
-    # Mantém o Render feliz (abre a porta)
-    import threading
-    from http.server import HTTPServer, BaseHTTPRequestHandler
-
-    class HealthHandler(BaseHTTPRequestHandler):
-        def do_GET(self):
-            self.send_response(200)
-            self.end_headers()
-            self.wfile.write(b"OK")
-        def log_message(self, format, *args):
-            pass
-
-    port = int(os.environ.get("PORT", 10000))
-    server = HTTPServer(("0.0.0.0", port), HealthHandler)
-    threading.Thread(target=server.serve_forever, daemon=True).start()
-    print(f"Health check rodando na porta {port}")
-
-    # Limpa webhook antigo e inicia o polling
     print("Limpando webhook e iniciando polling...")
     app.run_polling(
         drop_pending_updates=True,
-        allowed_updates=Update.ALL_TYPES
+        allowed_updates=Update.ALL_TYPES,
     )
 
 
