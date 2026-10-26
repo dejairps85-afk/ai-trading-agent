@@ -1,61 +1,73 @@
- """
-llm_client.py - Corrigido para Render
-Não cria cliente no import, só quando chamar
+"""
+llm_client.py - Cliente centralizado para Llama API gratuita
+Suporta: Meta Llama API oficial, OpenRouter (free), Groq
 """
 import os
 import time
-import hashlib
+from functools import lru_cache
+from openai import OpenAI
+from dotenv import load_dotenv
 
+load_dotenv()
+
+BASE_URL = os.getenv("LLM_BASE_URL", "https://openrouter.ai/api/v1")
+API_KEY = os.getenv("LLM_API_KEY") or os.getenv("LLAMA_API_KEY")
+MODEL = os.getenv("LLM_MODEL", "meta-llama/llama-4-maverick:free")
+
+if not API_KEY:
+    print("⚠️ LLM_API_KEY não configurado - usando fallback")
+
+_client = None
+
+def get_client():
+    global _client
+    if _client is None:
+        _client = OpenAI(
+            base_url=BASE_URL,
+            api_key=API_KEY or "dummy",
+        )
+    return _client
+
+# Cache simples em memória com TTL
 _cache = {}
 
-def _get_config():
-    # Aceita qualquer nome de variável pra não dar erro
-    api_key = (
-        os.getenv("LLM_API_KEY")
-        or os.getenv("LLAMA_API_KEY")
-        or os.getenv("OPENAI_API_KEY")
-        or os.getenv("OPENROUTER_API_KEY")
-        or "sk-dummy-key-for-init"  # dummy pra não crashar no init
-    )
-    base_url = os.getenv("LLM_BASE_URL", "https://openrouter.ai/api/v1")
-    model = os.getenv("LLM_MODEL", "meta-llama/llama-4-maverick:free")
-    return api_key, base_url, model
+def cached_call(key: str, ttl_seconds: int = 300):
+    """Decorator para cache com TTL"""
+    def decorator(func):
+        def wrapper(*args, **kwargs):
+            now = time.time()
+            # Limpa expirados
+            expired = [k for k, (v, t) in _cache.items() if now - t > ttl_seconds]
+            for k in expired:
+                del _cache[k]
+            
+            cache_key = f"{key}:{args}:{kwargs}"
+            if cache_key in _cache:
+                value, ts = _cache[cache_key]
+                if now - ts < ttl_seconds:
+                    return value
+            
+            result = func(*args, **kwargs)
+            _cache[cache_key] = (result, now)
+            return result
+        return wrapper
+    return decorator
 
-def call_llama(prompt: str, system: str = "Você é um analista.", temperature: float = 0.3, use_cache: bool = True):
-    # Importa SÓ AQUI, lazy
-    from openai import OpenAI
-
-    api_key, base_url, model = _get_config()
-
-    # Cache simples
-    key_raw = f"{system}|{prompt}|{model}"
-    cache_key = hashlib.md5(key_raw.encode()).hexdigest()
-    now = time.time()
-
-    if use_cache and cache_key in _cache:
-        ts, resp = _cache[cache_key]
-        if now - ts < 300:
-            return resp
-
-    client = OpenAI(base_url=base_url, api_key=api_key)
-
+def chat(system: str, user: str, temperature: float = 0.3, max_tokens: int = 800) -> str:
+    """Chamada única ao LLM"""
     try:
-        completion = client.chat.completions.create(
-            model=model,
+        client = get_client()
+        resp = client.chat.completions.create(
+            model=MODEL,
             messages=[
                 {"role": "system", "content": system},
-                {"role": "user", "content": prompt}
+                {"role": "user", "content": user},
             ],
             temperature=temperature,
-            max_tokens=500,
+            max_tokens=max_tokens,
         )
-        text = completion.choices[0].message.content.strip()
+        return resp.choices[0].message.content.strip()
     except Exception as e:
-        print(f"[LLM ERROR] {e}")
-        # Fallback pra não derrubar o bot
-        return '{"sentiment": "NEUTRAL", "confidence": 0.5, "summary": "fallback", "action": "HOLD", "reasoning": "LLM offline"}'
-
-    if use_cache:
-        _cache[cache_key] = (now, text)
-
-    return text
+        print(f"LLM Error: {e}")
+        # Fallback para não quebrar o bot
+        return f"ERRO_LLM: {str(e)[:100]}"
