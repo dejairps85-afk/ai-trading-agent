@@ -1,7 +1,7 @@
-XAI_API_KEY=sua_chave_xai_aqui_
-AQ.Ab8RN6KxTez_4YQ4_gyFeHX4Fsr62-R-uav_UUmfTkBVfOVzOg
-LLM_PROVIDER=xai
-LLM_MODEL=grok-4
+LLM_BASE_URL=https://openrouter.ai/api/v1
+LLM_API_KEY=sk-or-v1-sua-chave-aqui
+LLM_MODEL=meta-llama/llama-4-maverick:free
+LLM_CACHE_TTL=300
 
 TELEGRAM_BOT_TOKEN=8954558001:AAFK42PX7OdaKRSSGLwqWjOhH7EuJxC_hZI
 
