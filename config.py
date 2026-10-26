@@ -1,72 +1,39 @@
 """
-Configurações centrais do AI Trading Agent
+config.py - CORRIGIDO
+Aceita qualquer provedor gratuito, não exige XAI_API_KEY
 """
 import os
-from pathlib import Path
 from dotenv import load_dotenv
 
 load_dotenv()
 
-BASE_DIR = Path(__file__).parent
-DATA_DIR = BASE_DIR / "data_store"
-DATA_DIR.mkdir(exist_ok=True)
-
-# Capital e risco
-INITIAL_CAPITAL = float(os.getenv("INITIAL_CAPITAL", "10000"))
-RISK_PER_TRADE = float(os.getenv("RISK_PER_TRADE", "0.02"))  # 2% do capital por trade
-MAX_POSITIONS = int(os.getenv("MAX_POSITIONS", "3"))
-PAPER_TRADING = os.getenv("PAPER_TRADING", "true").lower() == "true"
-
-# Ticker padrão
-DEFAULT_TICKER = os.getenv("DEFAULT_TICKER", "BTC-USD")
-
-# LLM
-LLM_PROVIDER = os.getenv("LLM_PROVIDER", "xai").lower()
-LLM_MODEL = os.getenv("LLM_MODEL", "grok-4")
-LLM_BASE_URL = os.getenv("LLM_BASE_URL", "")
-
-# Mapeamento de providers para base_url e chave
-PROVIDER_CONFIG = {
-    "xai": {
-        "base_url": "https://api.x.ai/v1",
-        "api_key_env": "XAI_API_KEY",
-    },
-    "openai": {
-        "base_url": "https://api.openai.com/v1",
-        "api_key_env": "OPENAI_API_KEY",
-    },
-    "deepseek": {
-        "base_url": "https://api.deepseek.com/v1",
-        "api_key_env": "DEEPSEEK_API_KEY",
-    },
-    "google": {
-        "base_url": "https://generativelanguage.googleapis.com/v1beta/openai/",
-        "api_key_env": "GOOGLE_API_KEY",
-    },
-    "anthropic": {
-        "base_url": "https://api.anthropic.com/v1/",
-        "api_key_env": "ANTHROPIC_API_KEY",
-    },
-    "openai_compatible": {
-        "base_url": LLM_BASE_URL or "http://localhost:11434/v1",
-        "api_key_env": "OPENAI_COMPATIBLE_API_KEY",
-    },
-}
-
-def get_llm_config():
-    cfg = PROVIDER_CONFIG.get(LLM_PROVIDER, PROVIDER_CONFIG["xai"])
-    api_key = os.getenv(cfg["api_key_env"], "")
-    if not api_key and LLM_PROVIDER != "openai_compatible":
-        raise ValueError(
-            f"Chave de API não encontrada. Defina {cfg['api_key_env']} no arquivo .env"
-        )
-    return {
-        "base_url": cfg["base_url"],
-        "api_key": api_key or "ollama",
-        "model": LLM_MODEL,
-        "provider": LLM_PROVIDER,
-    }
-
-# Telegram (opcional)
+# Telegram
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "")
+DEFAULT_TICKER = os.getenv("DEFAULT_TICKER", "BTC-USD")
+PAPER_TRADING = os.getenv("PAPER_TRADING", "true").lower() == "true"
+
+# LLM - aceita vários nomes pra não quebrar
+def get_llm_config():
+    api_key = (
+        os.getenv("LLM_API_KEY")
+        or os.getenv("LLAMA_API_KEY")
+        or os.getenv("OPENAI_API_KEY")
+        or os.getenv("OPENROUTER_API_KEY")
+        or os.getenv("XAI_API_KEY")  # compatibilidade com seu antigo
+        or os.getenv("GROQ_API_KEY")
+        or "sk-dummy"
+    )
+    
+    base_url = os.getenv("LLM_BASE_URL", "https://openrouter.ai/api/v1")
+    model = os.getenv("LLM_MODEL", "meta-llama/llama-4-maverick:free")
+    
+    return {
+        "api_key": api_key,
+        "api_key_env": "LLM_API_KEY",
+        "base_url": base_url,
+        "model": model,
+    }
+
+# Para compatibilidade com código antigo que espera XAI
+XAI_API_KEY = os.getenv("XAI_API_KEY") or os.getenv("LLM_API_KEY") or os.getenv("OPENAI_API_KEY")
