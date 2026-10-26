@@ -1,18 +1,25 @@
 #!/usr/bin/env python3
 """
+AI Trading Agent - Versão Telegram (ideal para celular / iPhone / Android)
+CORRIGIDO: porta abre primeiro + LLM lazy
+"""
 import os
 import threading
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
-# 1. ABRE A PORTA IMEDIATAMENTE - ANTES DE TUDO
+# ---------------------------------------------------------------------------
+# 1. Servidor HTTP mínimo - DEVE SER O PRIMEIRO, ANTES DE QUALQUER IMPORT
+# ---------------------------------------------------------------------------
 class HealthHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         self.send_response(200)
         self.end_headers()
         self.wfile.write(b"ok")
+
     def do_HEAD(self):
         self.send_response(200)
         self.end_headers()
+
     def log_message(self, *args):
         pass
 
@@ -22,31 +29,39 @@ def start_health_server():
         server = HTTPServer(("0.0.0.0", port), HealthHandler)
         threading.Thread(target=server.serve_forever, daemon=True).start()
         print(f"Health check rodando na porta {port}")
-    except Exception as e:
-        print(f"Health server erro: {e}")
+    except OSError as e:
+        print(f"Health server nao iniciou na porta {port}: {e}")
 
-start_health_server()  # <- CHAMA AGORA
+# ABRE A PORTA AGORA
+start_health_server()
 
-# 2. SÓ AGORA importa o resto
+# ---------------------------------------------------------------------------
+# 2. Agora sim importa o resto
+# ---------------------------------------------------------------------------
 import asyncio
 import logging
+
 from dotenv import load_dotenv
 load_dotenv()
 
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import Application, CommandHandler, CallbackQueryHandler, filters, MessageHandler, ContextTypes
 from telegram.error import BadRequest
+from telegram.ext import (
+    Application,
+    CommandHandler,
+    ContextTypes,
+    MessageHandler,
+    CallbackQueryHandler,
+    filters,
+)
 
-# Seus módulos
 from config import TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID, DEFAULT_TICKER, PAPER_TRADING
 from technical import TechnicalAnalyst
 from sentiment import SentimentAnalyst
 from risk import RiskManager
 from trader import TraderAgent
 from paper_trader import PaperPortfolio
-from fetcher import get_market_snapshot
-
-# ... resto do seu código continua igual a partir daqui ...
+from fetcher import get_market_snapshot, normalize_ticker
 
 logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
@@ -66,19 +81,15 @@ def is_authorized(update: Update) -> bool:
 
 
 async def safe_edit(msg, text, **kwargs):
-    """Edita a mensagem com Markdown; se o Telegram recusar o formato, reenvia sem Markdown."""
     try:
         await msg.edit_text(text, parse_mode="Markdown", **kwargs)
     except BadRequest as e:
-        logger.warning(f"Markdown inválido, reenviando em texto puro: {e}")
+        logger.warning(f"Markdown invalido, reenviando em texto puro: {e}")
         await msg.edit_text(text.replace("*", "").replace("`", ""), **kwargs)
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     logger.info("=== COMANDO /start RECEBIDO ===")
-    logger.info(f"Chat ID: {update.effective_chat.id}")
-    logger.info(f"User: {update.effective_user.first_name}")
-
     if not is_authorized(update):
         await update.message.reply_text("⛔ Acesso não autorizado.")
         return
@@ -145,9 +156,12 @@ async def status_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 def run_full_analysis(ticker: str):
-    """Roda toda a análise (bloqueante). Chamada via asyncio.to_thread."""
     tech = TechnicalAnalyst().analyze(ticker)
-    sent = SentimentAnalyst().analyze(ticker)
+    # Passa snapshot para sentiment para usar cache
+    try:
+        sent = SentimentAnalyst().analyze(ticker, snapshot=tech.get("snapshot", {}))
+    except TypeError:
+        sent = SentimentAnalyst().analyze(ticker)
 
     portfolio = PaperPortfolio()
     prices = {ticker: tech["snapshot"]["price"]}
@@ -222,7 +236,6 @@ async def analyze_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 [InlineKeyboardButton(f"📉 Fechar {ticker}", callback_data=f"close_{ticker}")]
             )
 
-        # Texto vem de LLM e pode quebrar o Markdown: safe_edit tenta e cai para texto puro
         await safe_edit(msg, text, reply_markup=InlineKeyboardMarkup(keyboard))
 
     except Exception as e:
@@ -289,7 +302,6 @@ async def trade_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def close_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Fecha uma posição paper ou todas."""
     if not is_authorized(update):
         await update.message.reply_text("⛔ Acesso não autorizado.")
         return
@@ -338,7 +350,6 @@ async def close_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await safe_edit(msg, text)
         return
 
-    # Fecha um ticker específico
     ticker = arg
     if ticker not in portfolio.positions:
         await update.message.reply_text(
@@ -423,20 +434,17 @@ async def unknown(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE):
-    """Evita que erros (ex.: Conflict de deploy duplicado) derrubem o bot com stack trace solto."""
-    logger.error("Erro não tratado:", exc_info=context.error)
+    # Evita que erros derrubem o bot
+    logger.error("Erro nao tratado:", exc_info=context.error)
 
 
 def main():
     token = TELEGRAM_BOT_TOKEN or os.getenv("TELEGRAM_BOT_TOKEN")
     if not token:
-        print("❌ TELEGRAM_BOT_TOKEN não configurado")
+        print("TELEGRAM_BOT_TOKEN nao configurado")
         return
 
-    # Abre a porta ANTES de qualquer coisa pesada, uma única vez
-    start_health_server()
-
-    print("🤖 Iniciando AI Trading Agent (Telegram)...")
+    print("Iniciando AI Trading Agent (Telegram)...")
 
     app = Application.builder().token(token).build()
 
