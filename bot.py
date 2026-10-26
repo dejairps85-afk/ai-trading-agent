@@ -401,12 +401,11 @@ async def unknown(update: Update, context: ContextTypes.DEFAULT_TYPE):
 def main():
     token = TELEGRAM_BOT_TOKEN or os.getenv("TELEGRAM_BOT_TOKEN")
     if not token:
-        print("❌ TELEGRAM_BOT_TOKEN não configurado no .env")
-        print("Crie um bot com @BotFather no Telegram e cole o token.")
+        print("❌ TELEGRAM_BOT_TOKEN não configurado")
         return
 
     print("🤖 Iniciando AI Trading Agent (Telegram)...")
-    print("Funciona no iPhone e Android. Ctrl+C para parar.")
+    print("Funciona no iPhone e Android.")
 
     app = Application.builder().token(token).build()
 
@@ -419,6 +418,24 @@ def main():
     app.add_handler(CallbackQueryHandler(button_handler))
     app.add_handler(MessageHandler(filters.COMMAND, unknown))
 
+    # Mantém o Render feliz (abre a porta)
+    import threading
+    from http.server import HTTPServer, BaseHTTPRequestHandler
+
+    class HealthHandler(BaseHTTPRequestHandler):
+        def do_GET(self):
+            self.send_response(200)
+            self.end_headers()
+            self.wfile.write(b"OK")
+        def log_message(self, format, *args):
+            pass
+
+    port = int(os.environ.get("PORT", 10000))
+    server = HTTPServer(("0.0.0.0", port), HealthHandler)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    print(f"Health check rodando na porta {port}")
+
+    # Roda o bot
     app.run_polling(allowed_updates=Update.ALL_TYPES)
 
 
