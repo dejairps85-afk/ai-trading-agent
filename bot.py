@@ -20,11 +20,28 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(b"ok")
 
+    def do_HEAD(self):
+        self.send_response(200)
+        self.end_headers()
+
+    def log_message(self, *args):
+        pass  # silencia os logs de health check
+
+_started = False
+
 def keep_alive():
+    global _started
+    if _started:
+        return
+    _started = True
     port = int(os.environ.get("PORT", 10000))
-    HTTPServer(("0.0.0.0", port), Handler).serve_forever()
+    try:
+        HTTPServer(("0.0.0.0", port), Handler).serve_forever()
+    except OSError as e:
+        print(f"Servidor HTTP não iniciou: {e}")
 
 threading.Thread(target=keep_alive, daemon=True).start()
+
 
 import os
 import logging
