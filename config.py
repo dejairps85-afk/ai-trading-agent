@@ -3,6 +3,7 @@ config.py - CORRIGIDO
 Aceita qualquer provedor gratuito, não exige XAI_API_KEY
 """
 import os
+from pathlib import Path
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -12,6 +13,12 @@ TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "")
 DEFAULT_TICKER = os.getenv("DEFAULT_TICKER", "BTC-USD")
 PAPER_TRADING = os.getenv("PAPER_TRADING", "true").lower() == "true"
+
+# Configurações usadas pelos módulos legados e pelo paper trader.
+INITIAL_CAPITAL = float(os.getenv("INITIAL_CAPITAL", "10000"))
+RISK_PER_TRADE = float(os.getenv("RISK_PER_TRADE", "0.01"))
+MAX_POSITIONS = int(os.getenv("MAX_POSITIONS", "2"))
+DATA_DIR = Path(os.getenv("DATA_DIR", "data"))
 
 # LLM - aceita vários nomes pra não quebrar
 def get_llm_config():
