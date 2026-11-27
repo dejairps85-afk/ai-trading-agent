@@ -2,4 +2,7 @@
 from .csv_feed import CsvMarketFeed
 from .paper import PaperBroker, RiskLimits
 from .schema import MarketEvent, TradeSignal
-__all__ = ["CsvMarketFeed", "PaperBroker", "RiskLimits", "MarketEvent", "TradeSignal"]
+from .tape_reader import TapeReader, TapeReaderConfig
+
+__all__ = ["CsvMarketFeed", "PaperBroker", "RiskLimits", "MarketEvent",
+           "TradeSignal", "TapeReader", "TapeReaderConfig"]
