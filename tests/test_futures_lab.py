@@ -202,5 +202,46 @@ class DecisionEngineTests(unittest.TestCase):
         self.assertEqual(result["decision"], "HOLD")
 
 
+class ReplayEngineTests(unittest.TestCase):
+    def make_events(self, prices, buy=80, sell=20, start_day=1):
+        return [MarketEvent(datetime(2026, 1, start_day, 9, 0, i), "WIN", "TRADE", price,
+                            aggressor_buy_volume=buy, aggressor_sell_volume=sell,
+                            best_bid=price - 1, best_ask=price)
+                for i, price in enumerate(prices)]
+
+    def test_replay_reports_metrics_and_closes_at_end(self):
+        from futures_lab import ReplayConfig, ReplayEngine
+        events = self.make_events([100, 101, 102, 103, 104])
+        result = ReplayEngine(config=ReplayConfig(point_value=1, window_events=3,
+                                                   take_profit_points=2)).run(events)
+        metrics = result["metrics"]
+        self.assertEqual(metrics["mode"], "PAPER_ONLY")
+        self.assertEqual(metrics["event_count"], 5)
+        self.assertGreaterEqual(metrics["trade_count"], 1)
+        self.assertFalse(metrics["is_live_performance"])
+        self.assertEqual(metrics["open_positions"], {})
+
+    def test_replay_rejects_mixed_instruments(self):
+        from futures_lab import ReplayConfig, ReplayEngine
+        events = self.make_events([100, 101, 102])
+        events.append(MarketEvent(datetime(2026, 1, 1, 9, 0, 4), "WDO", "TRADE", 5000,
+                                  aggressor_buy_volume=80, aggressor_sell_volume=20))
+        with self.assertRaises(ValueError):
+            ReplayEngine(config=ReplayConfig(point_value=1)).run(events)
+
+    def test_replay_requires_explicit_point_value(self):
+        from futures_lab import ReplayEngine
+        with self.assertRaises(ValueError):
+            ReplayEngine()
+
+    def test_replay_costs_are_included(self):
+        from futures_lab import ReplayConfig, ReplayEngine
+        events = self.make_events([100, 101, 102, 103])
+        result = ReplayEngine(config=ReplayConfig(point_value=1, window_events=3,
+                                                   fee_per_contract_side=0.5,
+                                                   close_at_end=True)).run(events)
+        self.assertLess(result["metrics"]["net_pnl"], 0.0)
+
+
 if __name__ == "__main__":
     unittest.main()
