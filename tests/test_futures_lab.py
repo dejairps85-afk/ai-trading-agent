@@ -19,6 +19,22 @@ class FuturesLabTests(unittest.TestCase):
         b=PaperBroker(10000,{"WIN":RiskLimits(max_contracts=2,point_value=.2,fee_per_contract_side=.5,slippage_points=1)})
         self.assertTrue(b.open_position("WIN","SELL",2,130000)["ok"])
         r=b.close_position("WIN",129990); self.assertTrue(r["ok"]); self.assertAlmostEqual(r["trade"]["pnl"],1.2)
+    def test_long_stop_closes_at_stop_price(self):
+        b=PaperBroker(limits={"WIN":RiskLimits(max_contracts=1,point_value=1)})
+        b.open_position("WIN","BUY",1,100,stop_price=95,target_price=110)
+        result=b.process_price("WIN",94)
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["trade"]["reason"],"stop_loss")
+        self.assertEqual(result["trade"]["exit_price"],95)
+
+    def test_short_target_closes_at_target_price(self):
+        b=PaperBroker(limits={"WDO":RiskLimits(max_contracts=1,point_value=1)})
+        b.open_position("WDO","SELL",1,5000,stop_price=5010,target_price=4980)
+        result=b.process_price("WDO",4975)
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["trade"]["reason"],"take_profit")
+        self.assertEqual(result["trade"]["exit_price"],4980)
+
     def test_limits_and_duplicate(self):
         b=PaperBroker(limits={"WDO":RiskLimits(max_contracts=1,point_value=10)})
         self.assertFalse(b.open_position("WDO","BUY",2,5000)["ok"]); self.assertTrue(b.open_position("WDO","BUY",1,5000)["ok"])
