@@ -10,12 +10,12 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-from agents.technical import TechnicalAnalyst
-from agents.sentiment import SentimentAnalyst
-from agents.risk import RiskManager
-from agents.trader import TraderAgent
-from portfolio.paper_trader import PaperPortfolio
-from data.fetcher import get_market_snapshot
+from technical import TechnicalAnalyst
+from sentiment import SentimentAnalyst
+from risk import RiskManager
+from trader import TraderAgent
+from paper_trader import PaperPortfolio
+from fetcher import get_market_snapshot
 from config import DEFAULT_TICKER, PAPER_TRADING
 
 app = Flask(__name__)

@@ -11,6 +11,7 @@ from config import DATA_DIR, INITIAL_CAPITAL, PAPER_TRADING
 class PaperPortfolio:
     def __init__(self, name: str = "default"):
         self.path = DATA_DIR / f"portfolio_{name}.json"
+        self.path.parent.mkdir(parents=True, exist_ok=True)
         self.data = self._load()
 
     def _load(self) -> Dict[str, Any]:
