@@ -54,19 +54,25 @@ class ReplayEngine:
             raise ValueError("ReplayConfig explícita é obrigatória, incluindo point_value")
         self.config = config
 
-    def run(self, events):
+    def run(self, events, warmup_events=()):
         rows = list(events)
+        context = list(warmup_events)
         if not rows:
             raise ValueError("replay exige ao menos um evento")
         if any(not isinstance(event, MarketEvent) for event in rows):
             raise TypeError("todos os itens devem ser MarketEvent")
-        instruments = {event.instrument for event in rows}
+        if any(not isinstance(event, MarketEvent) for event in context):
+            raise TypeError("todos os eventos de aquecimento devem ser MarketEvent")
+        instruments = {event.instrument for event in rows + context}
         if len(instruments) != 1:
-            raise ValueError("cada replay deve conter apenas WIN ou apenas WDO")
-        aware = {event.timestamp.utcoffset() is not None for event in rows}
+            raise ValueError("replay e aquecimento devem conter apenas WIN ou apenas WDO")
+        aware = {event.timestamp.utcoffset() is not None for event in rows + context}
         if len(aware) != 1:
             raise ValueError("timestamps não podem misturar fusos horários e horários sem fuso")
         rows.sort(key=lambda event: event.timestamp)
+        context.sort(key=lambda event: event.timestamp)
+        if context and context[-1].timestamp >= rows[0].timestamp:
+            raise ValueError("eventos de aquecimento devem ser estritamente anteriores ao período avaliado")
         instrument = rows[0].instrument
 
         limits = RiskLimits(
@@ -77,7 +83,7 @@ class ReplayEngine:
             slippage_points=self.config.slippage_points,
         )
         broker = PaperBroker(self.config.initial_cash, {instrument: limits})
-        window = deque(maxlen=self.config.window_events)
+        window = deque(context[-(self.config.window_events - 1):], maxlen=self.config.window_events)
         equity_curve = []
         decisions = []
         current_date = None
