@@ -93,3 +93,20 @@ Cada fold reinicia o capital simulado, e o PnL agregado soma os resultados dos b
 A elegibilidade para replay é estrutural e não significa que o arquivo represente fielmente o mercado. Dados BAR/OHLCV podem ser úteis para replay de candles, mas nunca se tornam negócios, agressão ou book. `tape_ready` só é verdadeiro quando todas as linhas são eventos TRADE e contêm agressão compradora e vendedora. Book L1 e L2 são avaliados separadamente.
 
 O importador não presume cabeçalhos proprietários do Profit. O CSV deve ser exportado/normalizado para o esquema documentado, ou um adaptador específico deve ser criado após receber um arquivo real de exemplo. A auditoria não baixa automaticamente dados B3 nem contorna termos de acesso. Arquivos públicos de fechamento e resumos consolidados não substituem histórico intradiário de negócios e profundidade.
+
+
+### Modelo normalizado de CSV
+
+Modelo vazio: `examples/market_events_template.csv`. Campos obrigatórios: `timestamp,instrument,event_type,last_price`. Tipos aceitos: `BAR` (barra/candle), `TRADE` (negócio individual) e `BOOK` (atualização do livro). Campos opcionais: volume, agressão compradora/vendedora, bid/ask, profundidade, fonte declarada e código do contrato.
+
+Regras de preparação:
+- Use um arquivo por instrumento e informe `WIN` ou `WDO` em todas as linhas.
+- Use timestamps ISO 8601 e mantenha uma única convenção de fuso em todo o arquivo; prefira informar o offset quando conhecido.
+- Não preencha agressão, bid/ask ou profundidade por estimativa.
+- Para declarar Tape Reading apto, todas as linhas precisam ser eventos `TRADE` com agressão compradora e vendedora presentes. Isso ainda não autentica a fonte nem valida a metodologia de classificação do agressor.
+- `contract_code` é metadado auxiliar da auditoria; confirme vencimento e rolagem do contrato antes de combinar sessões.
+- O modelo é um esquema normalizado de entrada, não uma afirmação de que o Profit exporta exatamente esses nomes de colunas.
+
+### Limites das fontes B3
+
+A página oficial da B3 descreve o COTAHIST como série histórica de cotações em arquivo de largura fixa, com registros anuais e layout próprio. Não se deve tratá-lo como fluxo intradiário de negócios ou book. A documentação do Market Data descreve o segmento de Mercado Futuro e Câmbio e níveis L1/L2; condições de acesso, distribuição e consumo devem ser verificadas na política vigente antes de qualquer uso. Dados de fechamento e estatísticas consolidadas não substituem Times & Trades ou profundidade histórica.
