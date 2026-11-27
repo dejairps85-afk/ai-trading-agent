@@ -1,7 +1,7 @@
 import csv, tempfile, unittest
 from datetime import datetime
 from pathlib import Path
-from futures_lab import CsvMarketFeed, MarketEvent, PaperBroker, RiskLimits
+from futures_lab import CsvMarketFeed, MarketEvent, PaperBroker, RiskLimits, TapeReader, TapeReaderConfig
 from unittest.mock import patch
 from llm import LLMClient
 
@@ -87,6 +87,48 @@ class FuturesLabTests(unittest.TestCase):
             RiskLimits(point_value=float("inf"))
         with self.assertRaises(ValueError):
             RiskLimits(slippage_points=float("nan"))
+
+
+class TapeReaderTests(unittest.TestCase):
+    def make_events(self, buy, sell, prices, instrument="WIN", depth=False):
+        rows = []
+        for i, (b, s, price) in enumerate(zip(buy, sell, prices)):
+            rows.append(MarketEvent(datetime(2026, 1, 1, 9, 0, i), instrument, "TRADE", price,
+                                    aggressor_buy_volume=b, aggressor_sell_volume=s,
+                                    bid_depth=80 if depth else None, ask_depth=20 if depth else None))
+        return rows
+
+    def test_detects_buy_pressure_with_aggression(self):
+        result = TapeReader().analyze(self.make_events([80, 70, 90], [20, 30, 10], [100, 101, 102]))
+        self.assertEqual(result["classification"], "BUY_PRESSURE")
+        self.assertEqual(result["delta"], 180)
+        self.assertFalse(result["is_trade_recommendation"])
+
+    def test_marks_possible_absorption_not_confirmed(self):
+        result = TapeReader().analyze(self.make_events([90, 90, 90], [10, 10, 10], [100, 100, 99]))
+        self.assertEqual(result["classification"], "POSSIBLE_BUY_ABSORPTION")
+
+    def test_requires_real_aggressor_data(self):
+        rows = [MarketEvent(datetime(2026, 1, 1, 9, 0, i), "WDO", "BAR", 5000) for i in range(3)]
+        result = TapeReader().analyze(rows)
+        self.assertEqual(result["status"], "INSUFFICIENT_DATA")
+
+    def test_calculates_optional_book_imbalance(self):
+        result = TapeReader().analyze(self.make_events([10, 10, 10], [10, 10, 10],
+                                                        [5000, 5001, 5002], "WDO", depth=True))
+        self.assertAlmostEqual(result["book_imbalance"], 0.6)
+
+    def test_rejects_mixed_instruments(self):
+        rows = self.make_events([10, 10, 10], [5, 5, 5], [100, 101, 102])
+        rows[1] = MarketEvent(rows[1].timestamp, "WDO", "TRADE", 5000,
+                              aggressor_buy_volume=10, aggressor_sell_volume=5)
+        with self.assertRaises(ValueError):
+            TapeReader().analyze(rows)
+
+    def test_minimum_event_guard(self):
+        result = TapeReader(TapeReaderConfig(min_events=4)).analyze(
+            self.make_events([10, 10, 10], [1, 1, 1], [100, 101, 102]))
+        self.assertEqual(result["status"], "INSUFFICIENT_DATA")
 
 
 class StructuredDecisionTests(unittest.TestCase):
