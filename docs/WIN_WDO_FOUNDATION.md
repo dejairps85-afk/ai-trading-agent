@@ -48,3 +48,12 @@ As classes `BUY_PRESSURE` e `SELL_PRESSURE` são leituras descritivas. `POSSIBLE
 A janela deve conter apenas WIN ou apenas WDO. Os eventos são ordenados por timestamp antes dos cálculos. A profundidade é agregada somente entre eventos que realmente carregam os dois lados do book.
 
 Ainda não há parâmetros calibrados para mercado, sessão ou ativo. Os thresholds são defaults de pesquisa e precisam ser avaliados fora da amostra antes de qualquer uso operacional.
+
+
+## Etapa 4 — motor de decisão determinístico
+
+O `DecisionEngine` transforma as métricas do TapeReader em `BUY`, `SELL` ou `HOLD`, sem enviar ordens. O padrão é fail-closed: dados insuficientes, fluxo neutro, possível absorção, ausência de confirmação do preço, spread não verificável ou book contrário resultam em HOLD quando o filtro correspondente estiver ativo.
+
+A confiança é uma transformação simples do módulo do delta_ratio, não uma probabilidade estatística calibrada. A configuração de book e spread é opcional e deve ser explicitamente habilitada. O motor não usa modelo treinado, não substitui limites de risco e não constitui recomendação de negociação.
+
+A validação dos eventos agora rejeita valores NaN/infinito, volume/profundidade negativos, tipos de evento inválidos e timestamps inválidos. A camada continua isolada em PAPER_ONLY.
