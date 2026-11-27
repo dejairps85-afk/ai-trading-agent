@@ -243,6 +243,22 @@ class ReplayEngineTests(unittest.TestCase):
         self.assertLess(result["metrics"]["net_pnl"], 0.0)
 
 
+    def test_warmup_context_allows_first_test_event_decision_without_counting_context(self):
+        from futures_lab import ReplayConfig, ReplayEngine
+        test_events = self.make_events([103, 104, 105])
+        context = self.make_events([100, 101, 102])
+        result = ReplayEngine(config=ReplayConfig(point_value=1, window_events=3)).run(
+            test_events, warmup_events=context)
+        self.assertEqual(result["metrics"]["event_count"], 3)
+        self.assertEqual(result["decisions"][0]["timestamp"], test_events[0].timestamp.isoformat())
+
+    def test_warmup_must_precede_test_period(self):
+        from futures_lab import ReplayConfig, ReplayEngine
+        events = self.make_events([100, 101, 102])
+        with self.assertRaises(ValueError):
+            ReplayEngine(config=ReplayConfig(point_value=1)).run(events, warmup_events=events[:1])
+
+
 if __name__ == "__main__":
     unittest.main()
 
@@ -286,3 +302,32 @@ class ChronologicalSplitTests(unittest.TestCase):
                                 aggressor_buy_volume=80, aggressor_sell_volume=20)
         with self.assertRaises(ValueError):
             chronological_split(events)
+
+
+class WalkForwardTests(unittest.TestCase):
+    def make_events(self, count):
+        return [MarketEvent(datetime(2026, 1, 1, 9, 0, i), "WIN", "TRADE", 100 + i,
+                            aggressor_buy_volume=80, aggressor_sell_volume=20,
+                            best_bid=99 + i, best_ask=100 + i)
+                for i in range(count)]
+
+    def test_walk_forward_uses_non_overlapping_tests_and_warmup(self):
+        from futures_lab import ReplayConfig, walk_forward_replay
+        result = walk_forward_replay(
+            self.make_events(18),
+            ReplayConfig(point_value=1, window_events=3, take_profit_points=2),
+            train_events=6, validation_events=3, test_events=3)
+        self.assertEqual(result["fold_count"], 3)
+        self.assertEqual(result["aggregate"]["test_event_count"], 9)
+        self.assertTrue(result["test_blocks_non_overlapping"])
+        self.assertFalse(result["parameter_fitting_performed"])
+        self.assertEqual(result["folds"][0]["metrics"]["event_count"], 3)
+        self.assertEqual(result["folds"][0]["decisions"][0]["timestamp"],
+                         result["folds"][0]["test_range"][0])
+
+    def test_walk_forward_rejects_insufficient_data_and_bad_windows(self):
+        from futures_lab import ReplayConfig, walk_forward_replay
+        with self.assertRaises(ValueError):
+            walk_forward_replay(self.make_events(5), ReplayConfig(point_value=1), 3, 2, 1)
+        with self.assertRaises(ValueError):
+            walk_forward_replay(self.make_events(10), ReplayConfig(point_value=1), 0, 2, 1)
