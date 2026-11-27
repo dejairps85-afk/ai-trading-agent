@@ -75,3 +75,12 @@ Limitações: o replay trabalha com eventos observados e não reconstrói fills,
 A divisão usa contagem de eventos, não dias de pregão. Para estudos de séries temporais, a validação e o teste devem permanecer posteriores ao treino. Não ajustar thresholds com o conjunto de teste. Esta etapa ainda não implementa otimização de parâmetros nem walk-forward com janelas móveis.
 
 Atenção a aquecimento: as primeiras janelas de cada partição podem não ter contexto suficiente para o TapeReader. Em uma próxima camada, o histórico anterior poderá ser usado apenas como contexto de leitura, sem permitir entradas antes do início da partição avaliada. Não misturar candles com dados de agressão/book que não estejam presentes na fonte.
+
+
+## Etapa 7 — walk-forward de parâmetros congelados
+
+`walk_forward_replay` avalia blocos de teste cronológicos e não sobrepostos, usando janelas anteriores de treino e validação como histórico de contexto. Esse histórico pode aquecer o TapeReader, mas não gera operações nem entra nas métricas do bloco de teste.
+
+**Importante:** esta etapa não ajusta nem treina parâmetros. O mesmo motor determinístico e a mesma configuração congelada são usados em todos os folds. Portanto, é uma avaliação rolling out-of-sample, não treinamento de IA nem otimização automática. A comparação inicial usa baseline flat (nenhuma posição), com PnL zero; isso é uma referência conservadora, não um benchmark sofisticado.
+
+Cada fold reinicia o capital simulado, e o PnL agregado soma os resultados dos blocos de teste. Não interpretar essa soma como curva de capital contínua. Custos, point_value e qualidade dos dados precisam ser confirmados para cada instrumento antes de qualquer interpretação financeira. Sem eventos reais de agressão/book, o motor mantém HOLD por insuficiência de dados.
