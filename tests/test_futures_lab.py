@@ -16,7 +16,7 @@ class FuturesLabTests(unittest.TestCase):
     def test_short_pnl_with_costs(self):
         b=PaperBroker(10000,{"WIN":RiskLimits(max_contracts=2,point_value=.2,fee_per_contract_side=.5,slippage_points=1)})
         self.assertTrue(b.open_position("WIN","SELL",2,130000)["ok"])
-        r=b.close_position("WIN",129990); self.assertTrue(r["ok"]); self.assertAlmostEqual(r["trade"]["pnl"],2.0)
+        r=b.close_position("WIN",129990); self.assertTrue(r["ok"]); self.assertAlmostEqual(r["trade"]["pnl"],1.2)
     def test_limits_and_duplicate(self):
         b=PaperBroker(limits={"WDO":RiskLimits(max_contracts=1,point_value=10)})
         self.assertFalse(b.open_position("WDO","BUY",2,5000)["ok"]); self.assertTrue(b.open_position("WDO","BUY",1,5000)["ok"])
