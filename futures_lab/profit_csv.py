@@ -4,7 +4,6 @@ Column names are supplied by the user; no proprietary Profit schema is assumed.
 This module parses files only and never connects to Profit or sends orders.
 """
 import csv
-import hashlib
 import math
 from dataclasses import dataclass
 from datetime import datetime
@@ -13,6 +12,7 @@ from typing import Optional
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from .schema import MarketEvent
+from .ingestion_rules import file_sha256, instrument_family, bar_identity
 
 
 @dataclass(frozen=True)
@@ -93,12 +93,7 @@ class ProfitCsvAdapter:
     def _instrument(row, mapping):
         raw = (row.get(mapping.instrument) or "").strip().upper() if mapping.instrument else ""
         contract = (row.get(mapping.contract_code) or "").strip().upper() if mapping.contract_code else ""
-        def family(value):
-            for code in ("WIN", "WDO"):
-                if value.startswith(code):
-                    return code
-            return None
-        declared, inferred = family(raw), family(contract)
+        declared, inferred = instrument_family(raw), instrument_family(contract)
         if raw and declared is None:
             raise ValueError(f"instrument inválido: {raw!r}")
         if contract and inferred is None:
@@ -115,7 +110,7 @@ class ProfitCsvAdapter:
         path = Path(path)
         errors, warnings, events = [], [], []
         try:
-            digest = hashlib.sha256(path.read_bytes()).hexdigest()
+            digest = file_sha256(path)
         except OSError as exc:
             return ImportResult((), {"status": "INVALID", "errors": [str(exc)], "replay_eligible": False, "tape_ready": False})
         counts = {"BAR": 0, "TRADE": 0, "BOOK": 0}
@@ -158,7 +153,7 @@ class ProfitCsvAdapter:
                     if kind not in ("BAR", "TRADE", "BOOK"):
                         raise ValueError(f"event_type inválido: {kind!r}")
                     if kind == "BAR":
-                        key = (stamp, instrument)
+                        key = bar_identity(stamp, instrument, kind)
                         if key in seen_bars:
                             raise ValueError("BAR duplicado no mesmo timestamp")
                         seen_bars.add(key)
