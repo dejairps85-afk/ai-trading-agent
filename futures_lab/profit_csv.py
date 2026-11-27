@@ -91,12 +91,21 @@ class ProfitCsvAdapter:
     @staticmethod
     def _instrument(row, mapping):
         raw = (row.get(mapping.instrument) or "").strip().upper() if mapping.instrument else ""
-        if raw in ("WIN", "WDO"):
-            return raw
-        contract = (row.get(mapping.contract_code) or "").strip().upper() if mapping.contract_code else raw
-        for code in ("WIN", "WDO"):
-            if contract.startswith(code):
-                return code
+        contract = (row.get(mapping.contract_code) or "").strip().upper() if mapping.contract_code else ""
+        def family(value):
+            for code in ("WIN", "WDO"):
+                if value.startswith(code):
+                    return code
+            return None
+        declared, inferred = family(raw), family(contract)
+        if raw and declared is None:
+            raise ValueError(f"instrument inválido: {raw!r}")
+        if contract and inferred is None:
+            raise ValueError(f"contract_code inválido: {contract!r}")
+        if declared and inferred and declared != inferred:
+            raise ValueError("instrument e contract_code incompatíveis")
+        if declared or inferred:
+            return declared or inferred
         raise ValueError("Não foi possível identificar WIN/WDO; mapeie instrument ou contract_code")
 
     def read(self, path, mapping, expected_instrument=None):
