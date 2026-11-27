@@ -110,3 +110,14 @@ Regras de preparação:
 ### Limites das fontes B3
 
 A página oficial da B3 descreve o COTAHIST como série histórica de cotações em arquivo de largura fixa, com registros anuais e layout próprio. Não se deve tratá-lo como fluxo intradiário de negócios ou book. A documentação do Market Data descreve o segmento de Mercado Futuro e Câmbio e níveis L1/L2; condições de acesso, distribuição e consumo devem ser verificadas na política vigente antes de qualquer uso. Dados de fechamento e estatísticas consolidadas não substituem Times & Trades ou profundidade histórica.
+
+
+## Etapa 9 — adaptador configurável de CSV do Profit Pro
+
+O módulo `futures_lab.profit_csv` importa arquivos exportados pelo usuário por meio de `ProfitCsvMapping`. Os nomes das colunas são configurados explicitamente; **não existe presunção de que o exemplo seja o layout oficial do Profit Pro**. O perfil em `examples/profit_csv_mapping.example.json` é apenas um modelo editável.
+
+O mapeamento suporta delimitador, separador decimal, codificação, formato de data/hora e fuso IANA explícitos. Se um fuso for informado, timestamps sem fuso recebem esse fuso; timestamps que já contêm offset são preservados. Não se faz conversão silenciosa de horário. O ativo pode vir de coluna WIN/WDO ou ser identificado pelo prefixo do código de contrato; vencimento e rolagem não são inferidos.
+
+O importador separa BAR, TRADE e BOOK, preserva campos ausentes como `None`, não fabrica agressão nem book e aceita negócios distintos com o mesmo timestamp. Se qualquer linha falhar, a importação é invalidada e nenhum evento é liberado para replay. O relatório não autentica a origem do arquivo (`provenance_verified=false`).
+
+Para configurar corretamente o adaptador, ainda é necessário um CSV real exportado pelo Profit Pro, preferencialmente com cabeçalho e algumas linhas anonimizadas. Até lá, os testes usam fixtures sintéticas explicitamente destinadas a testar o parser, não dados reais de mercado.
