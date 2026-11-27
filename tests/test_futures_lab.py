@@ -2,6 +2,8 @@ import csv, tempfile, unittest
 from datetime import datetime
 from pathlib import Path
 from futures_lab import CsvMarketFeed, MarketEvent, PaperBroker, RiskLimits
+from unittest.mock import patch
+from llm import LLMClient
 class FuturesLabTests(unittest.TestCase):
     def test_delta_spread(self):
         e=MarketEvent(datetime(2026,1,1),"WIN","TRADE",130000,aggressor_buy_volume=12,aggressor_sell_volume=7,best_bid=129999,best_ask=130000)
@@ -21,4 +23,18 @@ class FuturesLabTests(unittest.TestCase):
         b=PaperBroker(limits={"WDO":RiskLimits(max_contracts=1,point_value=10)})
         self.assertFalse(b.open_position("WDO","BUY",2,5000)["ok"]); self.assertTrue(b.open_position("WDO","BUY",1,5000)["ok"])
         self.assertFalse(b.open_position("WDO","SELL",1,5001)["ok"])
+class StructuredDecisionTests(unittest.TestCase):
+    def test_valid_json_object(self):
+        client = LLMClient()
+        with patch("llm.call_llama", return_value='{"approved": true, "confidence": 0.8}'):
+            result = client.structured_decision("system", "prompt")
+        self.assertTrue(result["approved"])
+
+    def test_invalid_json_fails_closed(self):
+        client = LLMClient()
+        with patch("llm.call_llama", return_value="not json"):
+            result = client.structured_decision("system", "prompt")
+        self.assertFalse(result["approved"])
+        self.assertEqual(result["position_size_pct"], 0.0)
+
 if __name__=="__main__": unittest.main()
