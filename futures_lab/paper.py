@@ -152,6 +152,10 @@ class PaperBroker:
             unrealized += points * position.quantity * multiplier
         return {"unrealized_pnl": unrealized, "equity": self.cash + unrealized}
 
+    def reset_daily_pnl(self):
+        """Reinicia somente o contador diário no limite de uma nova sessão."""
+        self.daily_pnl = 0.0
+
     def status(self):
         return {"mode": "PAPER_ONLY", "initial_cash": self.initial_cash, "cash": self.cash,
                 "realized_pnl": self.realized_pnl, "daily_pnl": self.daily_pnl,
