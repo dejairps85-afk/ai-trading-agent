@@ -74,6 +74,7 @@ class FuturesLabTests(unittest.TestCase):
 
     def test_rejects_non_finite_prices(self):
         b = PaperBroker(limits={"WIN": RiskLimits()})
+        self.assertTrue(b.open_position("WIN", "BUY", 1, 100)["ok"])
         self.assertFalse(b.open_position("WIN", "BUY", 1, float("nan"))["ok"])
         self.assertFalse(b.open_position("WIN", "BUY", 1, 100, stop_price=float("inf"))["ok"])
         with self.assertRaises(ValueError):
