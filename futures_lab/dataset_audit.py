@@ -1,5 +1,6 @@
 """Auditoria conservadora de CSVs históricos; não inventa dados de fluxo."""
 import csv
+import hashlib
 import math
 from datetime import datetime
 from pathlib import Path
@@ -25,6 +26,7 @@ def audit_csv(path, expected_instrument=None, source_name=None, source_url=None)
     aggression_columns = book_l1_columns = book_l2_columns = False
     contract_columns = []
     try:
+        digest = hashlib.sha256(path.read_bytes()).hexdigest()
         handle = path.open("r", newline="", encoding="utf-8-sig")
     except OSError as exc:
         return {"status": "INVALID", "errors": [f"Não foi possível abrir o arquivo: {exc}"],
@@ -63,10 +65,11 @@ def audit_csv(path, expected_instrument=None, source_name=None, source_url=None)
                 event_types.add(kind)
                 stamp = datetime.fromisoformat((row.get("timestamp") or "").strip())
                 timezone_modes.add(stamp.utcoffset() is not None)
-                key = (stamp.isoformat(), instrument, kind)
-                if key in seen:
+                key = (stamp, instrument, kind)
+                if kind == "BAR" and key in seen:
                     errors.append(f"Linha {line}: evento duplicado ({key[0]}, {instrument}, {kind}).")
-                seen.add(key)
+                if kind == "BAR":
+                    seen.add(key)
                 price = float(row.get("last_price") or "")
                 if not math.isfinite(price) or price <= 0:
                     raise ValueError("last_price deve ser finito e positivo")
@@ -100,7 +103,7 @@ def audit_csv(path, expected_instrument=None, source_name=None, source_url=None)
                     complete_l2 += 1
                 for name in contract_columns:
                     code = (row.get(name) or "").strip().upper()
-                    if code and instrument not in code:
+                    if code and not code.startswith(instrument):
                         errors.append(f"Linha {line}: {name}={code!r} não identifica {instrument}.")
                 valid_rows += 1
             except (TypeError, ValueError) as exc:
@@ -128,7 +131,7 @@ def audit_csv(path, expected_instrument=None, source_name=None, source_url=None)
     return {
         "status": "INVALID" if errors else ("VALID_WITH_WARNINGS" if warnings else "VALID"),
         "source": {"name": source_name or "not_declared", "url": source_url or None,
-                   "file_name": path.name, "provenance_verified": False},
+                   "file_name": path.name, "sha256": digest, "provenance_verified": False},
         "row_count": row_count, "valid_rows": valid_rows,
         "instruments": sorted(instruments), "expected_instrument": expected_instrument,
         "event_types": sorted(event_types), "data_class": data_class,
