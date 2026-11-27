@@ -255,7 +255,7 @@ class ChronologicalSplitTests(unittest.TestCase):
 
     def test_split_is_ordered_disjoint_and_nonempty(self):
         from futures_lab import chronological_split
-        events = self.make_events([105, 101, 104, 102, 103, 106, 107, 108, 109, 110])
+        events = list(reversed(self.make_events([101, 102, 103, 104, 105, 106, 107, 108, 109, 110])))
         result = chronological_split(events, train_ratio=0.6, validation_ratio=0.2)
         self.assertEqual([e.last_price for e in result["train"]], [101, 102, 103, 104, 105, 106])
         self.assertEqual([e.last_price for e in result["validation"]], [107, 108])
