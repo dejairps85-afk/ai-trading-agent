@@ -6,7 +6,8 @@ from .replay import ReplayConfig, ReplayEngine
 from .schema import MarketEvent, TradeSignal
 from .tape_reader import TapeReader, TapeReaderConfig
 from .validation import chronological_split
+from .walk_forward import walk_forward_replay
 
 __all__ = ["CsvMarketFeed", "PaperBroker", "RiskLimits", "MarketEvent",
            "TradeSignal", "TapeReader", "TapeReaderConfig",
-           "DecisionConfig", "DecisionEngine", "ReplayConfig", "ReplayEngine", "chronological_split"]
+           "DecisionConfig", "DecisionEngine", "ReplayConfig", "ReplayEngine", "chronological_split", "walk_forward_replay"]
