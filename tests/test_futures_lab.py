@@ -246,7 +246,10 @@ class ReplayEngineTests(unittest.TestCase):
     def test_warmup_context_allows_first_test_event_decision_without_counting_context(self):
         from futures_lab import ReplayConfig, ReplayEngine
         test_events = self.make_events([103, 104, 105])
-        context = self.make_events([100, 101, 102])
+        context = [MarketEvent(datetime(2026, 1, 1, 8, 59, i), "WIN", "TRADE", 100 + i,
+                               aggressor_buy_volume=80, aggressor_sell_volume=20,
+                               best_bid=99 + i, best_ask=100 + i)
+                   for i in range(3)]
         result = ReplayEngine(config=ReplayConfig(point_value=1, window_events=3)).run(
             test_events, warmup_events=context)
         self.assertEqual(result["metrics"]["event_count"], 3)
