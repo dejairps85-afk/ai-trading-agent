@@ -37,3 +37,14 @@ CSV de candles permite replay técnico, não reconstrução fiel de agressão, f
 - O mark-to-market é uma estimativa bruta: não desconta custos hipotéticos de encerramento e não substitui cálculo de margem.
 - A trava diária usa PnL realizado acumulado nesta instância. Ainda não existe reset automático por data/sessão; isso depende de definir o fuso e o calendário operacional corretos.
 - Stops/alvos simulados são acionados no primeiro preço recebido que cruza o nível e contabilizados no preço do stop/alvo. Gaps, prioridade intrabar quando stop e alvo cabem no mesmo candle, fila do book e fills parciais ainda não são modelados.
+
+
+## Etapa 3 — leitura transparente de fluxo
+
+`TapeReader` agrega agressão compradora/vendedora observada, delta, delta relativo, variação de preço e desequilíbrio de profundidade quando bid_depth/ask_depth existem. Exige uma janela mínima e dados reais de agressão; quando ausentes, retorna `INSUFFICIENT_DATA`, sem inferir tape a partir de candles.
+
+As classes `BUY_PRESSURE` e `SELL_PRESSURE` são leituras descritivas. `POSSIBLE_BUY_ABSORPTION` e `POSSIBLE_SELL_ABSORPTION` são apenas candidatos heurísticos: agressão sem deslocamento compatível do preço não prova absorção nem identifica quem absorveu. O resultado explicitamente não é recomendação nem ordem.
+
+A janela deve conter apenas WIN ou apenas WDO. Os eventos são ordenados por timestamp antes dos cálculos. A profundidade é agregada somente entre eventos que realmente carregam os dois lados do book.
+
+Ainda não há parâmetros calibrados para mercado, sessão ou ativo. Os thresholds são defaults de pesquisa e precisam ser avaliados fora da amostra antes de qualquer uso operacional.
