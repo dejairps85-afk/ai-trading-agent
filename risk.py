@@ -42,7 +42,7 @@ Sugira tamanho e stops percentuais conservadores."""
 
         if proposed_action.upper() not in ("BUY", "SELL"):
             approved, reason = False, "Ação proposta inválida ou HOLD."
-        elif current_equity <= 0 or not math.isfinite(float(current_equity)):
+        elif _number(current_equity, -1) <= 0:
             approved, reason = False, "Capital/equity inválido."
         elif open_positions >= MAX_POSITIONS:
             approved, reason = False, "Limite máximo de posições atingido."
