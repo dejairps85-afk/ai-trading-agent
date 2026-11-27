@@ -130,6 +130,23 @@ class TapeReaderTests(unittest.TestCase):
             self.make_events([10, 10, 10], [1, 1, 1], [100, 101, 102]))
         self.assertEqual(result["status"], "INSUFFICIENT_DATA")
 
+    def test_rejects_non_finite_or_negative_market_fields(self):
+        with self.assertRaises(ValueError):
+            MarketEvent(datetime(2026, 1, 1), "WIN", "TRADE", float("nan"))
+        with self.assertRaises(ValueError):
+            MarketEvent(datetime(2026, 1, 1), "WIN", "BOOK", 100, bid_depth=-1)
+        with self.assertRaises(ValueError):
+            MarketEvent(datetime(2026, 1, 1), "WIN", "TRADE", 100,
+                        aggressor_buy_volume=float("inf"))
+
+    def test_rejects_non_market_event_before_reading_fields(self):
+        with self.assertRaises(TypeError):
+            TapeReader().analyze([object()])
+
+    def test_rejects_non_finite_tape_threshold(self):
+        with self.assertRaises(ValueError):
+            TapeReaderConfig(pressure_delta_ratio=float("nan"))
+
 
 class StructuredDecisionTests(unittest.TestCase):
     def test_valid_json_object(self):
@@ -144,6 +161,45 @@ class StructuredDecisionTests(unittest.TestCase):
             result = client.structured_decision("system", "prompt")
         self.assertFalse(result["approved"])
         self.assertEqual(result["position_size_pct"], 0.0)
+
+
+
+class DecisionEngineTests(unittest.TestCase):
+    def make_events(self, buy, sell, prices, depth=False):
+        return [MarketEvent(datetime(2026, 1, 1, 9, 0, i), "WIN", "TRADE", price,
+                            aggressor_buy_volume=b, aggressor_sell_volume=s,
+                            best_bid=price - 1, best_ask=price,
+                            bid_depth=80 if depth else None,
+                            ask_depth=20 if depth else None)
+                for i, (b, s, price) in enumerate(zip(buy, sell, prices))]
+
+    def test_buy_requires_flow_and_price_confirmation(self):
+        from futures_lab import DecisionEngine
+        result = DecisionEngine().evaluate(self.make_events([80, 70, 90], [20, 30, 10], [100, 101, 102]))
+        self.assertEqual(result["decision"], "BUY")
+        self.assertFalse(result["is_trade_recommendation"])
+
+    def test_absorption_defaults_to_hold(self):
+        from futures_lab import DecisionEngine
+        result = DecisionEngine().evaluate(self.make_events([90, 90, 90], [10, 10, 10], [100, 100, 99]))
+        self.assertEqual(result["decision"], "HOLD")
+
+    def test_missing_spread_fails_closed_when_filter_enabled(self):
+        from futures_lab import DecisionConfig, DecisionEngine
+        events = [MarketEvent(datetime(2026, 1, 1, 9, 0, i), "WIN", "TRADE", p,
+                              aggressor_buy_volume=80, aggressor_sell_volume=20)
+                  for i, p in enumerate([100, 101, 102])]
+        result = DecisionEngine(config=DecisionConfig(max_spread_points=2)).evaluate(events)
+        self.assertEqual(result["decision"], "HOLD")
+
+    def test_book_confirmation_blocks_opposing_book(self):
+        from futures_lab import DecisionConfig, DecisionEngine
+        events = [MarketEvent(datetime(2026, 1, 1, 9, 0, i), "WIN", "TRADE", p,
+                              aggressor_buy_volume=80, aggressor_sell_volume=20,
+                              bid_depth=10, ask_depth=90)
+                  for i, p in enumerate([100, 101, 102])]
+        result = DecisionEngine(config=DecisionConfig(require_book_confirmation=True)).evaluate(events)
+        self.assertEqual(result["decision"], "HOLD")
 
 
 if __name__ == "__main__":
