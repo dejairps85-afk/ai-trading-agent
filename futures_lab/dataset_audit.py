@@ -90,12 +90,12 @@ def audit_csv(path, expected_instrument=None, source_name=None, source_url=None)
                 sell = (row.get("aggressor_sell_volume") or "").strip()
                 if buy and sell:
                     complete_aggression += 1
-                bid, ask = (row.get(n) or "").strip() for n in ("best_bid", "best_ask")
+                bid, ask = ((row.get(n) or "").strip() for n in ("best_bid", "best_ask"))
                 if bid and ask:
                     if float(ask) < float(bid):
                         raise ValueError("best_ask menor que best_bid")
                     complete_l1 += 1
-                bd, ad = (row.get(n) or "").strip() for n in ("bid_depth", "ask_depth")
+                bd, ad = ((row.get(n) or "").strip() for n in ("bid_depth", "ask_depth"))
                 if bd and ad:
                     complete_l2 += 1
                 for name in contract_columns:
