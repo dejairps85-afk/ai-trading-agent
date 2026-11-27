@@ -121,3 +121,10 @@ O mapeamento suporta delimitador, separador decimal, codificação, formato de d
 O importador separa BAR, TRADE e BOOK, preserva campos ausentes como `None`, não fabrica agressão nem book e aceita negócios distintos com o mesmo timestamp. Se qualquer linha falhar, a importação é invalidada e nenhum evento é liberado para replay. O relatório não autentica a origem do arquivo (`provenance_verified=false`).
 
 Para configurar corretamente o adaptador, ainda é necessário um CSV real exportado pelo Profit Pro, preferencialmente com cabeçalho e algumas linhas anonimizadas. Até lá, os testes usam fixtures sintéticas explicitamente destinadas a testar o parser, não dados reais de mercado.
+
+
+## Etapa 10 — pipeline de importação para replay seguro
+
+`run_imported_replay(import_result, replay_engine)` conecta o resultado do adaptador ao motor histórico somente quando o relatório declara `replay_eligible=true` e existem eventos. Importações inválidas ou vazias são bloqueadas antes do replay. O resultado mantém o relatório original de importação junto das métricas e declara explicitamente `PAPER_ONLY` e `is_live_performance=false`.
+
+O pipeline não autentica a origem do CSV, não corrige dados ruins e não transforma candles em tape. A configuração financeira do replay, especialmente `point_value`, continua obrigatória e deve ser validada antes de interpretar resultados.
