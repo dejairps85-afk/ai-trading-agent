@@ -236,7 +236,7 @@ class ReplayEngineTests(unittest.TestCase):
 
     def test_replay_costs_are_included(self):
         from futures_lab import ReplayConfig, ReplayEngine
-        events = self.make_events([100, 101, 102, 103])
+        events = self.make_events([100, 101, 102, 102.5])
         result = ReplayEngine(config=ReplayConfig(point_value=1, window_events=3,
                                                    fee_per_contract_side=0.5,
                                                    close_at_end=True)).run(events)
