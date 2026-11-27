@@ -27,3 +27,13 @@ Na raiz: python -m unittest discover -s tests -v
 ## Limitações
 
 CSV de candles permite replay técnico, não reconstrução fiel de agressão, fila ou profundidade do book. Não há modelo preditivo treinado nem promessa de rentabilidade. Execução real permanece desabilitada.
+
+
+## Controles adicionados na etapa 2
+
+- Entradas, stops, alvos, custos e multiplicadores rejeitam valores não finitos (NaN/infinito).
+- O bloqueio de novas entradas é testado após o PnL realizado atingir a perda diária máxima configurada.
+- `mark_to_market(prices)` calcula PnL não realizado e equity para as posições abertas, usando os preços fornecidos pelo replay.
+- O mark-to-market é uma estimativa bruta: não desconta custos hipotéticos de encerramento e não substitui cálculo de margem.
+- A trava diária usa PnL realizado acumulado nesta instância. Ainda não existe reset automático por data/sessão; isso depende de definir o fuso e o calendário operacional corretos.
+- Stops/alvos simulados são acionados no primeiro preço recebido que cruza o nível e contabilizados no preço do stop/alvo. Gaps, prioridade intrabar quando stop e alvo cabem no mesmo candle, fila do book e fills parciais ainda não são modelados.
