@@ -4,6 +4,7 @@ Column names are supplied by the user; no proprietary Profit schema is assumed.
 This module parses files only and never connects to Profit or sends orders.
 """
 import csv
+import hashlib
 import math
 from dataclasses import dataclass
 from datetime import datetime
@@ -113,6 +114,10 @@ class ProfitCsvAdapter:
             raise TypeError("mapping deve ser ProfitCsvMapping")
         path = Path(path)
         errors, warnings, events = [], [], []
+        try:
+            digest = hashlib.sha256(path.read_bytes()).hexdigest()
+        except OSError as exc:
+            return ImportResult((), {"status": "INVALID", "errors": [str(exc)], "replay_eligible": False, "tape_ready": False})
         counts = {"BAR": 0, "TRADE": 0, "BOOK": 0}
         try:
             handle = path.open("r", newline="", encoding=mapping.encoding)
@@ -143,6 +148,7 @@ class ProfitCsvAdapter:
             row_count = 0
             instruments, kinds, tz_modes = set(), set(), set()
             previous = None
+            seen_bars = set()
             for line, row in enumerate(reader, start=2):
                 row_count += 1
                 try:
@@ -151,6 +157,11 @@ class ProfitCsvAdapter:
                     kind = (row.get(mapping.event_type) or "").strip().upper()
                     if kind not in ("BAR", "TRADE", "BOOK"):
                         raise ValueError(f"event_type inválido: {kind!r}")
+                    if kind == "BAR":
+                        key = (stamp, instrument)
+                        if key in seen_bars:
+                            raise ValueError("BAR duplicado no mesmo timestamp")
+                        seen_bars.add(key)
                     price = self._number(row, mapping.last_price, mapping.decimal, required=True, positive=True)
                     volume = self._number(row, mapping.volume, mapping.decimal) if mapping.volume else 0.0
                     values = {}
@@ -205,6 +216,7 @@ class ProfitCsvAdapter:
                 "timestamp", "instrument", "contract_code", "event_type", "last_price",
                 "volume", "aggressor_buy_volume", "aggressor_sell_volume", "best_bid",
                 "best_ask", "bid_depth", "ask_depth", "source")},
+            "sha256": digest,
             "provenance_verified": False, "replay_eligible": valid,
             "tape_ready": tape_ready, "errors": errors, "warnings": warnings,
         }
