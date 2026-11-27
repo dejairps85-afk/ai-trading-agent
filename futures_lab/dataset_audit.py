@@ -1,9 +1,9 @@
 """Auditoria conservadora de CSVs históricos; não inventa dados de fluxo."""
 import csv
-import hashlib
 import math
 from datetime import datetime
 from pathlib import Path
+from .ingestion_rules import file_sha256, instrument_family, bar_identity
 
 AGGRESSION_FIELDS = {"aggressor_buy_volume", "aggressor_sell_volume"}
 BOOK_L1_FIELDS = {"best_bid", "best_ask"}
@@ -26,7 +26,7 @@ def audit_csv(path, expected_instrument=None, source_name=None, source_url=None)
     aggression_columns = book_l1_columns = book_l2_columns = False
     contract_columns = []
     try:
-        digest = hashlib.sha256(path.read_bytes()).hexdigest()
+        digest = file_sha256(path)
         handle = path.open("r", newline="", encoding="utf-8-sig")
     except OSError as exc:
         return {"status": "INVALID", "errors": [f"Não foi possível abrir o arquivo: {exc}"],
@@ -65,9 +65,9 @@ def audit_csv(path, expected_instrument=None, source_name=None, source_url=None)
                 event_types.add(kind)
                 stamp = datetime.fromisoformat((row.get("timestamp") or "").strip())
                 timezone_modes.add(stamp.utcoffset() is not None)
-                key = (stamp, instrument, kind)
+                key = bar_identity(stamp, instrument, kind)
                 if kind == "BAR" and key in seen:
-                    errors.append(f"Linha {line}: evento duplicado ({key[0]}, {instrument}, {kind}).")
+                    errors.append(f"Linha {line}: evento duplicado ({stamp}, {instrument}, {kind}).")
                 if kind == "BAR":
                     seen.add(key)
                 price = float(row.get("last_price") or "")
@@ -103,7 +103,7 @@ def audit_csv(path, expected_instrument=None, source_name=None, source_url=None)
                     complete_l2 += 1
                 for name in contract_columns:
                     code = (row.get(name) or "").strip().upper()
-                    if code and not code.startswith(instrument):
+                    if code and instrument_family(code) != instrument:
                         errors.append(f"Linha {line}: {name}={code!r} não identifica {instrument}.")
                 valid_rows += 1
             except (TypeError, ValueError) as exc:
