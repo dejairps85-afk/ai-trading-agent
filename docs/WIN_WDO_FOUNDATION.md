@@ -84,3 +84,12 @@ Atenção a aquecimento: as primeiras janelas de cada partição podem não ter 
 **Importante:** esta etapa não ajusta nem treina parâmetros. O mesmo motor determinístico e a mesma configuração congelada são usados em todos os folds. Portanto, é uma avaliação rolling out-of-sample, não treinamento de IA nem otimização automática. A comparação inicial usa baseline flat (nenhuma posição), com PnL zero; isso é uma referência conservadora, não um benchmark sofisticado.
 
 Cada fold reinicia o capital simulado, e o PnL agregado soma os resultados dos blocos de teste. Não interpretar essa soma como curva de capital contínua. Custos, point_value e qualidade dos dados precisam ser confirmados para cada instrumento antes de qualquer interpretação financeira. Sem eventos reais de agressão/book, o motor mantém HOLD por insuficiência de dados.
+
+
+## Etapa 8 — auditoria conservadora de datasets
+
+`audit_csv(path, expected_instrument=...)` verifica cabeçalho, preços, timestamps, ordem cronológica, duplicidades, separação WIN/WDO, fuso horário, campos de agressão e book e, quando fornecido, o prefixo do código do contrato. O relatório registra nome do arquivo e metadados declarados, mas não afirma autenticar a origem: `provenance_verified` permanece falso até haver uma cadeia verificável de origem e integridade.
+
+A elegibilidade para replay é estrutural e não significa que o arquivo represente fielmente o mercado. Dados BAR/OHLCV podem ser úteis para replay de candles, mas nunca se tornam negócios, agressão ou book. `tape_ready` só é verdadeiro quando todas as linhas são eventos TRADE e contêm agressão compradora e vendedora. Book L1 e L2 são avaliados separadamente.
+
+O importador não presume cabeçalhos proprietários do Profit. O CSV deve ser exportado/normalizado para o esquema documentado, ou um adaptador específico deve ser criado após receber um arquivo real de exemplo. A auditoria não baixa automaticamente dados B3 nem contorna termos de acesso. Arquivos públicos de fechamento e resumos consolidados não substituem histórico intradiário de negócios e profundidade.
