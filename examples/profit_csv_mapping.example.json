@@ -1,0 +1,21 @@
+{
+  "_comment": "EXEMPLO GENÉRICO: substitua os nomes pelos cabeçalhos reais do seu CSV. Não é um layout oficial confirmado do Profit Pro.",
+  "timestamp": "DataHora",
+  "instrument": "Ativo",
+  "contract_code": "Contrato",
+  "event_type": "TipoEvento",
+  "last_price": "Preco",
+  "volume": "Quantidade",
+  "aggressor_buy_volume": "AgressaoCompradora",
+  "aggressor_sell_volume": "AgressaoVendedora",
+  "best_bid": "MelhorCompra",
+  "best_ask": "MelhorVenda",
+  "bid_depth": "QtdCompra",
+  "ask_depth": "QtdVenda",
+  "source": "Origem",
+  "delimiter": ";",
+  "decimal": ",",
+  "encoding": "utf-8-sig",
+  "timestamp_format": "%d/%m/%Y %H:%M:%S",
+  "timezone": "America/Sao_Paulo"
+}
