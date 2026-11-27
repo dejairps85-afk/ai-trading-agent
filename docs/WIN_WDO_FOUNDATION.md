@@ -57,3 +57,12 @@ O `DecisionEngine` transforma as métricas do TapeReader em `BUY`, `SELL` ou `HO
 A confiança é uma transformação simples do módulo do delta_ratio, não uma probabilidade estatística calibrada. A configuração de book e spread é opcional e deve ser explicitamente habilitada. O motor não usa modelo treinado, não substitui limites de risco e não constitui recomendação de negociação.
 
 A validação dos eventos agora rejeita valores NaN/infinito, volume/profundidade negativos, tipos de evento inválidos e timestamps inválidos. A camada continua isolada em PAPER_ONLY.
+
+
+## Etapa 5 — replay histórico e métricas
+
+`ReplayEngine` reproduz eventos cronológicos de um único instrumento por execução. Exige `ReplayConfig(point_value=...)` explícito para impedir que o multiplicador unitário seja confundido com o valor financeiro oficial. Inclui custos e slippage configuráveis, limite de perda diária reiniciado na mudança de data do timestamp, stops/alvos opcionais e encerramento opcional ao final do replay.
+
+Relatório: quantidade de eventos/decisões/operações, taxa de acerto, PnL líquido e bruto, fator de lucro, média por operação, drawdown máximo em valor e percentual, curva de equity e lista de operações. Fator de lucro é `null` quando não há operações perdedoras, em vez de inventar infinito.
+
+Limitações: o replay trabalha com eventos observados e não reconstrói fills, fila, latência, gaps ou ambiguidade intrabar. Stops e alvos são avaliados na sequência de preços recebida e contabilizados no nível configurado pelo broker simulado. A taxa de acerto e o PnL não provam capacidade preditiva. Antes de qualquer conclusão, é necessário validar dados reais, custos, point_value e executar separação cronológica treino/validação/teste (walk-forward), sem otimizar nos períodos de teste. Cada chamada processa um único instrumento; não há conexão com Profit, corretora, DLL ou ordens reais.
