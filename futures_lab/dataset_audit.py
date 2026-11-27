@@ -63,13 +63,13 @@ def audit_csv(path, expected_instrument=None, source_name=None, source_url=None)
                 event_types.add(kind)
                 stamp = datetime.fromisoformat((row.get("timestamp") or "").strip())
                 timezone_modes.add(stamp.utcoffset() is not None)
-                price = float(row.get("last_price") or "")
-                if not math.isfinite(price) or price <= 0:
-                    raise ValueError("last_price deve ser finito e positivo")
                 key = (stamp.isoformat(), instrument, kind)
                 if key in seen:
                     errors.append(f"Linha {line}: evento duplicado ({key[0]}, {instrument}, {kind}).")
                 seen.add(key)
+                price = float(row.get("last_price") or "")
+                if not math.isfinite(price) or price <= 0:
+                    raise ValueError("last_price deve ser finito e positivo")
                 if previous is not None and stamp < previous:
                     errors.append(f"Linha {line}: timestamp fora de ordem.")
                 previous = stamp
