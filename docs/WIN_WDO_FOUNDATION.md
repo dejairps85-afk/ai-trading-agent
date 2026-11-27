@@ -66,3 +66,12 @@ A validação dos eventos agora rejeita valores NaN/infinito, volume/profundidad
 Relatório: quantidade de eventos/decisões/operações, taxa de acerto, PnL líquido e bruto, fator de lucro, média por operação, drawdown máximo em valor e percentual, curva de equity e lista de operações. Fator de lucro é `null` quando não há operações perdedoras, em vez de inventar infinito.
 
 Limitações: o replay trabalha com eventos observados e não reconstrói fills, fila, latência, gaps ou ambiguidade intrabar. Stops e alvos são avaliados na sequência de preços recebida e contabilizados no nível configurado pelo broker simulado. A taxa de acerto e o PnL não provam capacidade preditiva. Antes de qualquer conclusão, é necessário validar dados reais, custos, point_value e executar separação cronológica treino/validação/teste (walk-forward), sem otimizar nos períodos de teste. Cada chamada processa um único instrumento; não há conexão com Profit, corretora, DLL ou ordens reais.
+
+
+## Etapa 6 — separação cronológica de dados
+
+`chronological_split` divide eventos em treino, validação e teste por ordem temporal, sem embaralhar. A função exige ao menos três eventos, proporções válidas, apenas WIN ou apenas WDO por chamada e timestamps com a mesma condição de fuso horário. As três partições são não vazias e disjuntas.
+
+A divisão usa contagem de eventos, não dias de pregão. Para estudos de séries temporais, a validação e o teste devem permanecer posteriores ao treino. Não ajustar thresholds com o conjunto de teste. Esta etapa ainda não implementa otimização de parâmetros nem walk-forward com janelas móveis.
+
+Atenção a aquecimento: as primeiras janelas de cada partição podem não ter contexto suficiente para o TapeReader. Em uma próxima camada, o histórico anterior poderá ser usado apenas como contexto de leitura, sem permitir entradas antes do início da partição avaliada. Não misturar candles com dados de agressão/book que não estejam presentes na fonte.
