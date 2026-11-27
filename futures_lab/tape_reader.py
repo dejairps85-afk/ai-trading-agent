@@ -1,5 +1,6 @@
 """Transparent tape-reading metrics; heuristics are research signals, not orders."""
 from dataclasses import dataclass
+import math
 from typing import Iterable
 
 from .schema import MarketEvent
@@ -16,6 +17,11 @@ class TapeReaderConfig:
     def __post_init__(self):
         if type(self.min_events) is not int or self.min_events < 1:
             raise ValueError("min_events deve ser inteiro positivo")
+        for name in ("min_total_aggression", "pressure_delta_ratio",
+                     "absorption_delta_ratio", "max_absorption_move"):
+            value = getattr(self, name)
+            if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value):
+                raise ValueError(f"{name} deve ser numérico e finito")
         if self.min_total_aggression < 0:
             raise ValueError("min_total_aggression não pode ser negativo")
         if not 0 <= self.pressure_delta_ratio <= 1:
@@ -29,8 +35,8 @@ class TapeReaderConfig:
 class TapeReader:
     """Summarizes observed aggressor flow and optional top-of-book depth.
 
-    Absorption labels are deliberately named 'POSSIBLE_*': price/flow alone
-    cannot prove passive liquidity or identify the participant absorbing flow.
+    Absorption labels are candidates only: price/flow cannot prove passive
+    liquidity or identify the participant absorbing flow.
     """
 
     def __init__(self, config=None):
@@ -40,34 +46,37 @@ class TapeReader:
         rows = list(events)
         if not rows:
             return {"status": "INSUFFICIENT_DATA", "reason": "janela vazia"}
-        instrument = rows[0].instrument
-        if any(not isinstance(e, MarketEvent) for e in rows):
+        if any(not isinstance(event, MarketEvent) for event in rows):
             raise TypeError("todos os itens devem ser MarketEvent")
-        if any(e.instrument != instrument for e in rows):
+        instrument = rows[0].instrument
+        if any(event.instrument != instrument for event in rows):
             raise ValueError("a janela deve conter apenas um instrumento")
-        rows.sort(key=lambda e: e.timestamp)
+        rows.sort(key=lambda event: event.timestamp)
         if len(rows) < self.config.min_events:
             return {"status": "INSUFFICIENT_DATA", "reason": "eventos abaixo do mínimo",
                     "instrument": instrument, "event_count": len(rows)}
-        if any(e.delta is None for e in rows):
-            return {"status": "INSUFFICIENT_DATA", "reason": "agressão compradora/vendedora ausente",
+        if any(event.delta is None for event in rows):
+            return {"status": "INSUFFICIENT_DATA",
+                    "reason": "agressão compradora/vendedora ausente",
                     "instrument": instrument, "event_count": len(rows)}
 
-        buy = sum(e.aggressor_buy_volume for e in rows)
-        sell = sum(e.aggressor_sell_volume for e in rows)
+        buy = sum(event.aggressor_buy_volume for event in rows)
+        sell = sum(event.aggressor_sell_volume for event in rows)
         total = buy + sell
         if total < self.config.min_total_aggression:
-            return {"status": "INSUFFICIENT_DATA", "reason": "volume de agressão insuficiente",
+            return {"status": "INSUFFICIENT_DATA",
+                    "reason": "volume de agressão insuficiente",
                     "instrument": instrument, "event_count": len(rows)}
         delta = buy - sell
         delta_ratio = delta / total if total else 0.0
         price_change = rows[-1].last_price - rows[0].last_price
 
-        book_rows = [e for e in rows if e.bid_depth is not None and e.ask_depth is not None]
+        book_rows = [event for event in rows
+                     if event.bid_depth is not None and event.ask_depth is not None]
         book_imbalance = None
         if book_rows:
-            bid = sum(e.bid_depth for e in book_rows)
-            ask = sum(e.ask_depth for e in book_rows)
+            bid = sum(event.bid_depth for event in book_rows)
+            ask = sum(event.ask_depth for event in book_rows)
             if bid + ask > 0:
                 book_imbalance = (bid - ask) / (bid + ask)
 
@@ -81,16 +90,12 @@ class TapeReader:
         elif delta_ratio <= -self.config.pressure_delta_ratio:
             label = "SELL_PRESSURE"
 
+        spreads = [event.spread for event in rows if event.spread is not None]
         return {
-            "status": "OK",
-            "instrument": instrument,
-            "event_count": len(rows),
-            "aggressor_buy_volume": buy,
-            "aggressor_sell_volume": sell,
-            "delta": delta,
-            "delta_ratio": delta_ratio,
-            "price_change": price_change,
-            "book_imbalance": book_imbalance,
-            "classification": label,
-            "is_trade_recommendation": False,
+            "status": "OK", "instrument": instrument, "event_count": len(rows),
+            "aggressor_buy_volume": buy, "aggressor_sell_volume": sell,
+            "delta": delta, "delta_ratio": delta_ratio,
+            "price_change": price_change, "book_imbalance": book_imbalance,
+            "average_spread": sum(spreads) / len(spreads) if spreads else None,
+            "classification": label, "is_trade_recommendation": False,
         }
