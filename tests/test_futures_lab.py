@@ -236,7 +236,7 @@ class ReplayEngineTests(unittest.TestCase):
 
     def test_replay_costs_are_included(self):
         from futures_lab import ReplayConfig, ReplayEngine
-        events = self.make_events([100, 101, 102, 102.5])
+        events = self.make_events([100, 101, 102, 102.1])
         result = ReplayEngine(config=ReplayConfig(point_value=1, window_events=3,
                                                    fee_per_contract_side=0.5,
                                                    close_at_end=True)).run(events)
@@ -245,3 +245,44 @@ class ReplayEngineTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ChronologicalSplitTests(unittest.TestCase):
+    def make_events(self, prices, instrument="WIN"):
+        return [MarketEvent(datetime(2026, 1, 1, 9, 0, i), instrument, "TRADE", price,
+                            aggressor_buy_volume=80, aggressor_sell_volume=20)
+                for i, price in enumerate(prices)]
+
+    def test_split_is_ordered_disjoint_and_nonempty(self):
+        from futures_lab import chronological_split
+        events = self.make_events([105, 101, 104, 102, 103, 106, 107, 108, 109, 110])
+        result = chronological_split(events, train_ratio=0.6, validation_ratio=0.2)
+        self.assertEqual([e.last_price for e in result["train"]], [101, 102, 103, 104, 105, 106])
+        self.assertEqual([e.last_price for e in result["validation"]], [107, 108])
+        self.assertEqual([e.last_price for e in result["test"]], [109, 110])
+        self.assertEqual(len(set(result["train"]) & set(result["validation"])), 0)
+        self.assertEqual(len(set(result["validation"]) & set(result["test"])), 0)
+
+    def test_split_rejects_mixed_instruments(self):
+        from futures_lab import chronological_split
+        events = self.make_events([100, 101, 102])
+        events.append(self.make_events([5000], instrument="WDO")[0])
+        with self.assertRaises(ValueError):
+            chronological_split(events)
+
+    def test_split_rejects_invalid_ratios_and_too_few_events(self):
+        from futures_lab import chronological_split
+        with self.assertRaises(ValueError):
+            chronological_split(self.make_events([100, 101]), train_ratio=0.6, validation_ratio=0.2)
+        with self.assertRaises(ValueError):
+            chronological_split(self.make_events([100, 101, 102]), train_ratio=0.8, validation_ratio=0.3)
+
+    def test_split_rejects_mixed_timezone_awareness(self):
+        from datetime import timezone
+        from futures_lab import chronological_split
+        events = self.make_events([100, 101, 102])
+        events[1] = MarketEvent(datetime(2026, 1, 1, 9, 0, 1, tzinfo=timezone.utc),
+                                "WIN", "TRADE", 101,
+                                aggressor_buy_volume=80, aggressor_sell_volume=20)
+        with self.assertRaises(ValueError):
+            chronological_split(events)
