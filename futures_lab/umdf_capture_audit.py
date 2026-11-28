@@ -1,5 +1,7 @@
 """Offline Colab-compatible capture audit. dpkt is an optional dependency."""
 from zipfile import ZipFile
+from hashlib import sha256
+from .umdf_capture_dates import audit_dates
 from socket import inet_aton
 from itertools import islice
 from .fast_xml_registry import load_decoders
@@ -45,7 +47,18 @@ def audit_capture(capture_zip, template_zip, *, source, destination, port,
             reader=dpkt.pcap.Reader(stream)
             if reader.datalink()!=1:
                 raise ValueError("Expected Ethernet capture")
-            report=audit_packets(udp_payloads(islice(reader,max_frames),source=source,destination=destination,port=port,dpkt=dpkt),decoders,max_packets=max_frames)
-    report.update(template_compile_errors=compile_errors,frame_limit=max_frames,
+            timestamps=[]
+            def observed_frames():
+                for stamp, raw in islice(reader,max_frames):
+                    timestamps.append(stamp)
+                    yield stamp, raw
+            report=audit_packets(udp_payloads(observed_frames(),source=source,destination=destination,port=port,dpkt=dpkt),decoders,max_packets=max_frames)
+    try:
+        dates=audit_dates(members[0].filename,timestamps)
+    except (ValueError,OverflowError,OSError) as exc:
+        dates={"date_consistent":False,"error":str(exc)}
+    report.update(template_sha256=sha256(xml).hexdigest(),pcap_member=members[0].filename,
+                  frames_observed=len(timestamps),date_audit=dates,
+                  template_compile_errors=compile_errors,frame_limit=max_frames,
                   capture_fully_verified=False,training_approved=False)
     return report
