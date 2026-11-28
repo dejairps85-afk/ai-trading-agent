@@ -16,3 +16,18 @@ class BuilderTests(unittest.TestCase):
             b.ingest(dict(TotNoRelatedSym=2,LastFragment="Y",RelatedSym=[dict(SecurityID=1,Symbol="WINZ26")]))
         with self.assertRaises(RuntimeError):
             b.resolve(1)
+
+    def test_duplicate_across_fragments(self):
+        b=CatalogBuilder()
+        entry=dict(SecurityID=1,Symbol="WINZ26")
+        b.ingest(dict(TotNoRelatedSym=2,LastFragment="N",RelatedSym=[entry]))
+        with self.assertRaises(ValueError):
+            b.ingest(dict(TotNoRelatedSym=2,LastFragment="Y",RelatedSym=[entry]))
+        with self.assertRaises(RuntimeError):
+            b.resolve(1)
+    def test_duplicate_within_fragment(self):
+        b=CatalogBuilder()
+        entry=dict(SecurityID=1,Symbol="WINZ26")
+        with self.assertRaises(ValueError):
+            b.ingest(dict(TotNoRelatedSym=2,LastFragment="Y",RelatedSym=[entry,entry]))
+        self.assertFalse(b.complete)
