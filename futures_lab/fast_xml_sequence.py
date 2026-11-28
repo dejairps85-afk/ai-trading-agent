@@ -7,7 +7,9 @@ def needs_map(node):
     kind=local(node.tag)
     if kind=="decimal":
         parts=list(node)
-        return any(needs_map(p) for p in parts)
+        return any(needs_map(p) for p in parts) or (node.get("presence")=="optional" and bool(parts) and any(local(c.tag)=="constant" for c in parts[0]))
+    if kind=="sequence":
+        return False
     return any(local(c.tag) in ("copy","default","increment") or
                (local(c.tag)=="constant" and node.get("presence")=="optional")
                for c in node)
@@ -23,8 +25,11 @@ def compile_sequence(node):
     for field in parts[1:]:
         kind=local(field.tag)
         if kind=="decimal":
-            raise ValueError("Decimal sequence fields require presence-map verification")
-        fields.append(compile_scalar(field))
+            fields.append(compile_decimal(field))
+        elif kind=="sequence":
+            fields.append(compile_sequence(field))
+        else:
+            fields.append(compile_scalar(field))
     if not fields or len({n for n,_ in fields})!=len(fields):
         raise ValueError("Invalid entry fields")
     mapped=any(needs_map(f) for f in parts[1:])
