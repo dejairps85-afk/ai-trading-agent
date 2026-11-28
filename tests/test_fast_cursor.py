@@ -18,6 +18,11 @@ class CursorTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             c.finish()
     def test_nullable_maximum(self):
-        c=Cursor(bytes.fromhex("08 00 00 00 80"))
+        c=Cursor(bytes.fromhex("10 00 00 00 80"))
         self.assertEqual(c.integer(nullable=True),2**32-1)
         c.finish()
+    def test_nullable_overflow(self):
+        c=Cursor(bytes.fromhex("10 00 00 00 81"))
+        with self.assertRaises(ValueError):
+            c.integer(nullable=True)
+        self.assertEqual(c.pos,0)
