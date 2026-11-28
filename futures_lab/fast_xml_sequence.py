@@ -15,9 +15,10 @@ def needs_map(node):
                for c in node)
 
 def compile_sequence(node):
-    if local(node.tag)!="sequence" or node.get("presence","mandatory")!="mandatory":
+    if local(node.tag)!="sequence" or node.get("presence","mandatory") not in ("mandatory","optional"):
         raise ValueError("Unsupported sequence")
     name=node.attrib["name"]
+    optional=node.get("presence")=="optional"
     parts=list(node)
     if not parts or local(parts[0].tag)!="length" or list(parts[0]):
         raise ValueError("Explicit uncompressed length required")
@@ -38,7 +39,9 @@ def compile_sequence(node):
         old_i=ints.values.copy()
         old_s=strings.copy()
         try:
-            count=cursor.integer(32)
+            count=cursor.integer(32,nullable=optional)
+            if count is None:
+                return None
             if count>10000:
                 raise ValueError("Sequence too large")
             result=[]
