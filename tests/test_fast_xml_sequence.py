@@ -20,4 +20,4 @@ class XmlSequenceTests(unittest.TestCase):
         self.assertEqual((c.pos,d.values),(0,{}))
     def test_unsupported(self):
         with self.assertRaises(ValueError):
-            compile_sequence(fromstring('<sequence name="x" presence="optional"><length/></sequence>'))
+            compile_sequence(fromstring('<sequence name="x" presence="optional"><length><copy/></length><uInt32 name="Qty"/></sequence>'))
