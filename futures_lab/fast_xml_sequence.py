@@ -1,4 +1,5 @@
 """Restricted XML sequence compiler; unsupported layouts are rejected."""
+from xml.etree.ElementTree import Element
 from .fast_templates import local
 from .fast_xml_scalar import compile_scalar
 from .fast_xml_decimal import compile_decimal
@@ -9,7 +10,8 @@ def needs_map(node):
         parts=list(node)
         return any(needs_map(p) for p in parts) or (node.get("presence")=="optional" and bool(parts) and any(local(c.tag)=="constant" for c in parts[0]))
     if kind=="sequence":
-        return False
+        parts=list(node)
+        return bool(parts) and (needs_map(parts[0]) or (node.get("presence")=="optional" and any(local(c.tag)=="constant" for c in parts[0])))
     return any(local(c.tag) in ("copy","default","increment") or
                (local(c.tag)=="constant" and node.get("presence")=="optional")
                for c in node)
@@ -20,8 +22,11 @@ def compile_sequence(node):
     name=node.attrib["name"]
     optional=node.get("presence")=="optional"
     parts=list(node)
-    if not parts or local(parts[0].tag)!="length" or list(parts[0]):
-        raise ValueError("Explicit uncompressed length required")
+    if not parts or local(parts[0].tag)!="length":
+        raise ValueError("Explicit length required")
+    length=Element("uInt32",{"name":parts[0].get("name","::length"),"presence":"optional" if optional else "mandatory"})
+    length.extend(list(parts[0]))
+    decode_length=compile_scalar(length)[1]
     fields=[]
     for field in parts[1:]:
         kind=local(field.tag)
@@ -39,7 +44,7 @@ def compile_sequence(node):
         old_i=ints.values.copy()
         old_s=strings.copy()
         try:
-            count=cursor.integer(32,nullable=optional)
+            count=decode_length(cursor,ints,strings,(scope,name,"length"),flags)
             if count is None:
                 return None
             if count>10000:
