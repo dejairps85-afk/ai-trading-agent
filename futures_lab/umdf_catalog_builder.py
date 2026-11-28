@@ -6,6 +6,7 @@ class CatalogBuilder:
         self.catalog=Catalog()
         self.total=None
         self.count=0
+        self._seen=set()
         self.complete=False
 
     def ingest(self,message):
@@ -21,7 +22,11 @@ class CatalogBuilder:
                 raise ValueError("Inconsistent total")
             self.total=total
             for entry in entries:
-                self.catalog.add(Instrument(entry["SecurityID"],entry["Symbol"]))
+                security_id=entry["SecurityID"]
+                if type(security_id) is not int or security_id in self._seen:
+                    raise ValueError("Duplicate or invalid security ID")
+                self.catalog.add(Instrument(security_id,entry["Symbol"]))
+                self._seen.add(security_id)
                 self.count+=1
             if self.count>total or (last=="Y")!=(self.count==total):
                 raise ValueError("Inconsistent fragment count")
