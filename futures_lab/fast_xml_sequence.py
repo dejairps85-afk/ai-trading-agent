@@ -1,0 +1,66 @@
+"""Restricted XML sequence compiler; unsupported layouts are rejected."""
+from xml.etree.ElementTree import Element
+from .fast_templates import local
+from .fast_xml_scalar import compile_scalar
+from .fast_xml_decimal import compile_decimal
+
+def needs_map(node):
+    kind=local(node.tag)
+    if kind=="decimal":
+        parts=list(node)
+        return any(needs_map(p) for p in parts) or (node.get("presence")=="optional" and bool(parts) and any(local(c.tag)=="constant" for c in parts[0]))
+    if kind=="sequence":
+        parts=list(node)
+        return bool(parts) and (needs_map(parts[0]) or (node.get("presence")=="optional" and any(local(c.tag)=="constant" for c in parts[0])))
+    return any(local(c.tag) in ("copy","default","increment") or
+               (local(c.tag)=="constant" and node.get("presence")=="optional")
+               for c in node)
+
+def compile_sequence(node):
+    if local(node.tag)!="sequence" or node.get("presence","mandatory") not in ("mandatory","optional"):
+        raise ValueError("Unsupported sequence")
+    name=node.attrib["name"]
+    optional=node.get("presence")=="optional"
+    parts=list(node)
+    if not parts or local(parts[0].tag)!="length":
+        raise ValueError("Explicit length required")
+    length=Element("uInt32",{"name":parts[0].get("name","::length"),"presence":"optional" if optional else "mandatory"})
+    length.extend(list(parts[0]))
+    decode_length=compile_scalar(length)[1]
+    fields=[]
+    for field in parts[1:]:
+        kind=local(field.tag)
+        if kind=="decimal":
+            fields.append(compile_decimal(field))
+        elif kind=="sequence":
+            fields.append(compile_sequence(field))
+        else:
+            fields.append(compile_scalar(field))
+    if not fields or len({n for n,_ in fields})!=len(fields):
+        raise ValueError("Invalid entry fields")
+    mapped=any(needs_map(f) for f in parts[1:])
+    def decode(cursor,ints,strings,scope,flags):
+        start=cursor.pos
+        old_i=ints.values.copy()
+        old_s=strings.copy()
+        try:
+            count=decode_length(cursor,ints,strings,(scope,name,"length"),flags)
+            if count is None:
+                return None
+            if count>10000:
+                raise ValueError("Sequence too large")
+            result=[]
+            for _ in range(count):
+                entry_flags=iter(cursor.pmap() if mapped else ())
+                result.append({n:f(cursor,ints,strings,(scope,name),entry_flags) for n,f in fields})
+                if any(entry_flags):
+                    raise ValueError("Unexpected presence bits")
+            return tuple(result)
+        except Exception:
+            cursor.pos=start
+            ints.values.clear()
+            ints.values.update(old_i)
+            strings.clear()
+            strings.update(old_s)
+            raise
+    return name,decode

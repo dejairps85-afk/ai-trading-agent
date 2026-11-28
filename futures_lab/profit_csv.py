@@ -12,6 +12,7 @@ from typing import Optional
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from .schema import MarketEvent
+from .ingestion_rules import file_sha256, instrument_family, bar_identity
 
 
 @dataclass(frozen=True)
@@ -91,12 +92,16 @@ class ProfitCsvAdapter:
     @staticmethod
     def _instrument(row, mapping):
         raw = (row.get(mapping.instrument) or "").strip().upper() if mapping.instrument else ""
-        if raw in ("WIN", "WDO"):
-            return raw
-        contract = (row.get(mapping.contract_code) or "").strip().upper() if mapping.contract_code else raw
-        for code in ("WIN", "WDO"):
-            if contract.startswith(code):
-                return code
+        contract = (row.get(mapping.contract_code) or "").strip().upper() if mapping.contract_code else ""
+        declared, inferred = instrument_family(raw), instrument_family(contract)
+        if raw and declared is None:
+            raise ValueError(f"instrument inválido: {raw!r}")
+        if contract and inferred is None:
+            raise ValueError(f"contract_code inválido: {contract!r}")
+        if declared and inferred and declared != inferred:
+            raise ValueError("instrument e contract_code incompatíveis")
+        if declared or inferred:
+            return declared or inferred
         raise ValueError("Não foi possível identificar WIN/WDO; mapeie instrument ou contract_code")
 
     def read(self, path, mapping, expected_instrument=None):
@@ -104,6 +109,10 @@ class ProfitCsvAdapter:
             raise TypeError("mapping deve ser ProfitCsvMapping")
         path = Path(path)
         errors, warnings, events = [], [], []
+        try:
+            digest = file_sha256(path)
+        except OSError as exc:
+            return ImportResult((), {"status": "INVALID", "errors": [str(exc)], "replay_eligible": False, "tape_ready": False})
         counts = {"BAR": 0, "TRADE": 0, "BOOK": 0}
         try:
             handle = path.open("r", newline="", encoding=mapping.encoding)
@@ -134,6 +143,7 @@ class ProfitCsvAdapter:
             row_count = 0
             instruments, kinds, tz_modes = set(), set(), set()
             previous = None
+            seen_bars = set()
             for line, row in enumerate(reader, start=2):
                 row_count += 1
                 try:
@@ -142,6 +152,11 @@ class ProfitCsvAdapter:
                     kind = (row.get(mapping.event_type) or "").strip().upper()
                     if kind not in ("BAR", "TRADE", "BOOK"):
                         raise ValueError(f"event_type inválido: {kind!r}")
+                    if kind == "BAR":
+                        key = bar_identity(stamp, instrument, kind)
+                        if key in seen_bars:
+                            raise ValueError("BAR duplicado no mesmo timestamp")
+                        seen_bars.add(key)
                     price = self._number(row, mapping.last_price, mapping.decimal, required=True, positive=True)
                     volume = self._number(row, mapping.volume, mapping.decimal) if mapping.volume else 0.0
                     values = {}
@@ -196,6 +211,7 @@ class ProfitCsvAdapter:
                 "timestamp", "instrument", "contract_code", "event_type", "last_price",
                 "volume", "aggressor_buy_volume", "aggressor_sell_volume", "best_bid",
                 "best_ask", "bid_depth", "ask_depth", "source")},
+            "sha256": digest,
             "provenance_verified": False, "replay_eligible": valid,
             "tape_ready": tape_ready, "errors": errors, "warnings": warnings,
         }
